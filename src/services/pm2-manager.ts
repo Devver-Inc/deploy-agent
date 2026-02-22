@@ -1,0 +1,113 @@
+import { exec, execOrThrow } from "../utils/exec";
+import { ensureDir } from "../utils/fs";
+
+const PM2_SCRIPTS_DIR = "/app/data/pm2";
+
+export interface PM2Process {
+  name: string;
+  pm_id: number;
+  status: "online" | "stopped" | "errored";
+  cpu: number;
+  memory: number;
+}
+
+export class PM2Manager {
+  private getProcessName(service: string, branch: string, port: number): string {
+    return `${service}-${branch}-${port}`;
+  }
+
+  async start(service: string, branch: string, port: number, startCommand: string, cwd: string, env: Record<string, string> = {}): Promise<string> {
+    const name = this.getProcessName(service, branch, port);
+    const { writeFileSync } = await import("fs");
+
+    if (await this.processExists(name)) {
+      await exec(`pm2 delete ${name}`);
+    }
+
+    const envVars = { ...env, PORT: port.toString(), HOST: "0.0.0.0" };
+    ensureDir(PM2_SCRIPTS_DIR);
+    const ecosystemFile = `${PM2_SCRIPTS_DIR}/${name}.config.js`;
+    const wrapperScript = `${PM2_SCRIPTS_DIR}/${name}.sh`;
+
+    writeFileSync(ecosystemFile, `module.exports = {
+  apps: [{
+    name: "${name}",
+    script: "${wrapperScript}",
+    cwd: "${cwd}",
+    interpreter: "/bin/sh",
+    env: ${JSON.stringify(envVars)},
+    watch: false,
+    autorestart: true,
+    max_restarts: 5,
+  }]
+};`);
+
+    writeFileSync(wrapperScript, `#!/bin/sh\ncd "${cwd}"\nexec ${startCommand}\n`);
+    await execOrThrow(`chmod +x ${wrapperScript}`, cwd);
+    await execOrThrow(`pm2 start ${ecosystemFile}`, cwd);
+    await this.waitForProcess(name);
+    await exec("pm2 save");
+
+    return name;
+  }
+
+  async waitForProcess(name: string, timeoutMs = 10000): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const proc = (await this.list()).find((p) => p.name === name);
+      if (proc?.status === "online") return;
+      if (proc?.status === "errored") {
+        throw new Error(`Process ${name} failed:\n${await this.getLogs(name, 20)}`);
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error(`Process ${name} timed out`);
+  }
+
+  async stop(name: string): Promise<void> {
+    await exec(`pm2 stop ${name}`);
+  }
+
+  async delete(name: string): Promise<void> {
+    await exec(`pm2 delete ${name}`);
+    await exec("pm2 save");
+  }
+
+  async deleteByBranch(branch: string): Promise<void> {
+    const processes = await this.list();
+    for (const proc of processes) {
+      if (proc.name.includes(`-${branch}-`)) await this.delete(proc.name);
+    }
+  }
+
+  async reload(name: string): Promise<void> {
+    await execOrThrow(`pm2 reload ${name} --update-env`);
+  }
+
+  async processExists(name: string): Promise<boolean> {
+    return (await exec(`pm2 describe ${name}`)).success;
+  }
+
+  async list(): Promise<PM2Process[]> {
+    const result = await exec("pm2 jlist");
+    if (!result.success) return [];
+    try {
+      return JSON.parse(result.stdout).map((p: any) => ({
+        name: p.name,
+        pm_id: p.pm_id,
+        status: p.pm2_env?.status ?? "stopped",
+        cpu: p.monit?.cpu ?? 0,
+        memory: p.monit?.memory ?? 0,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  async getLogs(name: string, lines = 100): Promise<string> {
+    const result = await exec(`pm2 logs ${name} --nostream --lines ${lines}`);
+    return result.stdout + result.stderr;
+  }
+}
+
+export const pm2Manager = new PM2Manager();

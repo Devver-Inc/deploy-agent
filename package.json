@@ -1,0 +1,20 @@
+{
+  "name": "deploy-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build --compile --minify src/index.ts --outfile deploy-agent",
+    "start": "bun run src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48",
+    "elysia": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.1.0",
+    "bun-types": "latest",
+    "typescript": "^5.0.0"
+  }
+}
