@@ -9,6 +9,29 @@ export enum LogEntryLevel {
   ERROR = "error",
 }
 
+export enum DeployStage {
+  VALIDATION = "validation",
+  WORKTREE = "worktree",
+  INSTALL = "install",
+  BUILD = "build",
+  PROCESS = "process",
+  NGINX = "nginx",
+  ROLLBACK = "rollback",
+}
+
+export enum ErrorCode {
+  REPO_NOT_FOUND = "REPO_NOT_FOUND",
+  GIT_ERROR = "GIT_ERROR",
+  INSTALL_ERROR = "INSTALL_ERROR",
+  BUILD_ERROR = "BUILD_ERROR",
+  PROCESS_ERROR = "PROCESS_ERROR",
+  NGINX_ERROR = "NGINX_ERROR",
+  ROLLBACK_ERROR = "ROLLBACK_ERROR",
+  DEPLOY_ERROR = "DEPLOY_ERROR",
+  PORT_CONFLICT = "PORT_CONFLICT",
+  VALIDATION_ERROR = "VALIDATION_ERROR",
+}
+
 export interface ServiceConfig {
   root?: string;
   install?: string;
@@ -71,7 +94,13 @@ export interface ErrorResponse {
     message: string;
     logs?: string;
     step?: number;
+    stage?: DeployStage;
     service?: string;
+    rollback?: {
+      attempted: boolean;
+      success: boolean;
+      message?: string;
+    };
   };
   duration: number;
 }
@@ -90,12 +119,3 @@ export interface LogsResponse {
 export interface PortRegistry {
   [branch: string]: { [service: string]: number };
 }
-
-export type ErrorCode =
-  | "GIT_ERROR"
-  | "INSTALL_ERROR"
-  | "BUILD_ERROR"
-  | "PROCESS_ERROR"
-  | "PORT_CONFLICT"
-  | "NGINX_ERROR"
-  | "VALIDATION_ERROR";

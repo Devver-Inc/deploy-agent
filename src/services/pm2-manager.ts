@@ -1,23 +1,21 @@
 import { exec, execOrThrow } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
+import type { PM2Process, LogEntry } from "../types";
+import { buildProcessName } from "./pm2/pm2-process-name";
+import { parsePm2Logs } from "./pm2/pm2-log-parser";
 
 const PM2_SCRIPTS_DIR = "/app/data/pm2";
 
-export interface PM2Process {
-  name: string;
-  pm_id: number;
-  status: "online" | "stopped" | "errored";
-  cpu: number;
-  memory: number;
-}
-
 export class PM2Manager {
-  private getProcessName(service: string, branch: string, port: number): string {
-    return `${service}-${branch}-${port}`;
-  }
-
-  async start(service: string, branch: string, port: number, startCommand: string, cwd: string, env: Record<string, string> = {}): Promise<string> {
-    const name = this.getProcessName(service, branch, port);
+  async start(
+    service: string,
+    branch: string,
+    port: number,
+    startCommand: string,
+    cwd: string,
+    env: Record<string, string> = {},
+  ): Promise<string> {
+    const name = buildProcessName(service, branch, port);
     const { writeFileSync } = await import("fs");
 
     if (await this.processExists(name)) {
@@ -29,7 +27,9 @@ export class PM2Manager {
     const ecosystemFile = `${PM2_SCRIPTS_DIR}/${name}.config.js`;
     const wrapperScript = `${PM2_SCRIPTS_DIR}/${name}.sh`;
 
-    writeFileSync(ecosystemFile, `module.exports = {
+    writeFileSync(
+      ecosystemFile,
+      `module.exports = {
   apps: [{
     name: "${name}",
     script: "${wrapperScript}",
@@ -40,9 +40,13 @@ export class PM2Manager {
     autorestart: true,
     max_restarts: 5,
   }]
-};`);
+};`,
+    );
 
-    writeFileSync(wrapperScript, `#!/bin/sh\ncd "${cwd}"\nexec ${startCommand}\n`);
+    writeFileSync(
+      wrapperScript,
+      `#!/bin/sh\ncd "${cwd}"\nexec ${startCommand}\n`,
+    );
     await execOrThrow(`chmod +x ${wrapperScript}`, cwd);
     await execOrThrow(`pm2 start ${ecosystemFile}`, cwd);
     await this.waitForProcess(name);
@@ -57,7 +61,9 @@ export class PM2Manager {
       const proc = (await this.list()).find((p) => p.name === name);
       if (proc?.status === "online") return;
       if (proc?.status === "errored") {
-        throw new Error(`Process ${name} failed:\n${await this.getLogs(name, 20)}`);
+        throw new Error(
+          `Process ${name} failed:\n${await this.getLogs(name, 20)}`,
+        );
       }
       await new Promise((r) => setTimeout(r, 500));
     }
@@ -107,6 +113,23 @@ export class PM2Manager {
   async getLogs(name: string, lines = 100): Promise<string> {
     const result = await exec(`pm2 logs ${name} --nostream --lines ${lines}`);
     return result.stdout + result.stderr;
+  }
+
+  async getLogsByDeployment(
+    deploymentId: string,
+    lines = 50,
+  ): Promise<LogEntry[]> {
+    const processes = await this.list();
+    const matching = processes.filter((p) =>
+      p.name.includes(`-${deploymentId}-`),
+    );
+
+    const logs: LogEntry[] = [];
+    for (const proc of matching) {
+      const raw = await this.getLogs(proc.name, lines);
+      logs.push(...parsePm2Logs(deploymentId, proc.name, raw));
+    }
+    return logs;
   }
 }
 

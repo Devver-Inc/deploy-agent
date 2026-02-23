@@ -1,6 +1,18 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { dirname } from "path";
+import { ensureDir } from "./fs";
 
-export class JsonRegistry<T extends Record<string, any>> {
+export interface KeyValueRepository<T extends Record<string, unknown>> {
+  get entries(): T;
+  set(key: string, value: T[string]): void;
+  get(key: string): T[string] | undefined;
+  remove(key: string): void;
+  has(key: string): boolean;
+}
+
+export class JsonRegistry<
+  T extends Record<string, unknown>,
+> implements KeyValueRepository<T> {
   private data: T;
 
   constructor(
@@ -20,7 +32,10 @@ export class JsonRegistry<T extends Record<string, any>> {
   }
 
   save(): void {
-    writeFileSync(this.filePath, JSON.stringify(this.data, null, 2));
+    ensureDir(dirname(this.filePath));
+    const tmpPath = `${this.filePath}.tmp`;
+    writeFileSync(tmpPath, JSON.stringify(this.data, null, 2));
+    renameSync(tmpPath, this.filePath);
   }
 
   get entries(): T {
@@ -33,7 +48,7 @@ export class JsonRegistry<T extends Record<string, any>> {
   }
 
   get(key: string): T[string] | undefined {
-    return this.data[key];
+    return this.data[key as keyof T] as T[string] | undefined;
   }
 
   remove(key: string): void {

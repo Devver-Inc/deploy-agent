@@ -1,24 +1,17 @@
 import { existsSync, writeFileSync } from "fs";
+import { rm } from "fs/promises";
 import { execOrThrow } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
-import { JsonRegistry } from "../utils/registry";
+import { isValidRepoName } from "../utils/validation";
+import { buildPostReceiveHook } from "./repo/repo-hook-template";
+import { assertRepoPathWithinBase } from "./repo/repo-path-guard";
+import { JsonRepoRepository } from "./repo/json-repo-repository";
+import type { RepoConfig, RepoRepository } from "./repo/repo-repository";
 
 const REPOS_BASE = "/app/repos";
 
-export interface RepoConfig {
-  name: string;
-  baseUrl: string;
-  createdAt: string;
-}
-
-export interface ReposRegistry {
-  [name: string]: RepoConfig;
-}
-
 export class RepoManager {
-  private registry = new JsonRegistry<ReposRegistry>("/app/data/repos.json", {});
-
-  constructor() {
+  constructor(private repository: RepoRepository = new JsonRepoRepository()) {
     ensureDir(REPOS_BASE);
   }
 
@@ -31,6 +24,10 @@ export class RepoManager {
   }
 
   async create(name: string, baseUrl: string): Promise<void> {
+    if (!isValidRepoName(name)) {
+      throw new Error("Invalid repository name.");
+    }
+
     const repoPath = this.getRepoPath(name);
     if (existsSync(repoPath)) throw new Error(`Repo '${name}' already exists`);
 
@@ -40,44 +37,41 @@ export class RepoManager {
     await execOrThrow(`git config receive.denyNonFastForwards false`, repoPath);
     await execOrThrow(`git config http.receivepack true`, repoPath);
     await execOrThrow(`git config --global --add safe.directory ${repoPath}`);
-    await execOrThrow(`git config --global --add safe.directory '/app/deployments/${name}/*'`);
+    await execOrThrow(
+      `git config --global --add safe.directory '/app/deployments/${name}/*'`,
+    );
 
-    writeFileSync(`${repoPath}/hooks/post-receive`, this.generatePostReceiveHook(name));
+    writeFileSync(`${repoPath}/hooks/post-receive`, buildPostReceiveHook(name));
     await execOrThrow(`chmod +x ${repoPath}/hooks/post-receive`, repoPath);
     await execOrThrow(`chown -R git:git ${repoPath}`);
 
-    this.registry.set(name, { name, baseUrl, createdAt: new Date().toISOString() });
-  }
-
-  private generatePostReceiveHook(repoName: string): string {
-    return `#!/bin/bash
-DEPLOYMENTS_DIR="/app/deployments/${repoName}"
-while read oldrev newrev refname; do
-    branch=\$(echo "\$refname" | sed 's|refs/heads/||')
-    worktree_path="\$DEPLOYMENTS_DIR/\$branch"
-    if [ -d "\$worktree_path" ]; then
-        cd "\$worktree_path"
-        git fetch --all --prune 2>&1 || true
-        git reset --hard "\$newrev" 2>&1
-        git clean -fd 2>&1 || true
-    fi
-done
-`;
+    this.repository.set(name, {
+      name,
+      baseUrl,
+      createdAt: new Date().toISOString(),
+    });
   }
 
   async delete(name: string): Promise<void> {
+    if (!isValidRepoName(name)) {
+      throw new Error("Invalid repository name.");
+    }
+
     const repoPath = this.getRepoPath(name);
     if (!existsSync(repoPath)) return;
-    await execOrThrow(`rm -rf ${repoPath}`);
-    this.registry.remove(name);
+
+    assertRepoPathWithinBase(REPOS_BASE, repoPath);
+
+    await rm(repoPath, { recursive: true, force: true });
+    this.repository.remove(name);
   }
 
   list(): RepoConfig[] {
-    return Object.values(this.registry.entries);
+    return this.repository.getAll();
   }
 
   getPushUrl(name: string): string {
-    const config = this.registry.entries[name];
+    const config = this.repository.get(name);
     const baseUrl = config?.baseUrl ?? "http://localhost";
     return `${baseUrl}/git/${name}.git`;
   }

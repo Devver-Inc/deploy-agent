@@ -1,16 +1,34 @@
 import type { ServiceConfig } from "../types";
 import { portManager } from "../services/port-manager";
 
-export function topologicalSort(services: Record<string, ServiceConfig>): string[] {
+export function topologicalSort(
+  services: Record<string, ServiceConfig>,
+): string[] {
   const visited = new Set<string>();
+  const visiting = new Set<string>();
   const result: string[] = [];
 
-  const visit = (name: string) => {
+  const visit = (name: string, stack: string[] = []) => {
     if (visited.has(name)) return;
-    visited.add(name);
-    for (const dep of services[name]?.depends ?? []) {
-      if (services[dep]) visit(dep);
+    if (visiting.has(name)) {
+      throw new Error(
+        `Dependency cycle detected: ${[...stack, name].join(" -> ")}`,
+      );
     }
+
+    visiting.add(name);
+    visited.add(name);
+
+    for (const dep of services[name]?.depends ?? []) {
+      if (!services[dep]) {
+        throw new Error(
+          `Service '${name}' depends on unknown service '${dep}'.`,
+        );
+      }
+      visit(dep, [...stack, name]);
+    }
+
+    visiting.delete(name);
     result.push(name);
   };
 
@@ -36,7 +54,8 @@ export function buildEnvVars(
 
   for (const [depService, depDeploymentId] of Object.entries(links)) {
     const depPort = portManager.getPort(depDeploymentId, depService);
-    if (depPort) env[`${depService.toUpperCase()}_URL`] = `http://127.0.0.1:${depPort}`;
+    if (depPort)
+      env[`${depService.toUpperCase()}_URL`] = `http://127.0.0.1:${depPort}`;
   }
 
   return env;

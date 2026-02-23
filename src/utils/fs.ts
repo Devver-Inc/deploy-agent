@@ -1,7 +1,5 @@
-import { existsSync, mkdirSync } from "fs";
+import { mkdirSync } from "fs";
 
 export function ensureDir(path: string): void {
-  if (!existsSync(path)) {
-    mkdirSync(path, { recursive: true });
-  }
+  mkdirSync(path, { recursive: true });
 }

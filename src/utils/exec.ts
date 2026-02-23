@@ -1,4 +1,5 @@
 import { $ } from "bun";
+import { assertSafeShellCommand } from "./validation";
 
 export interface ExecResult {
   success: boolean;
@@ -7,8 +8,16 @@ export interface ExecResult {
   exitCode: number;
 }
 
-export async function exec(command: string, cwd?: string): Promise<ExecResult> {
+export async function exec(
+  command: string,
+  cwd?: string,
+  options?: { unsafe?: boolean },
+): Promise<ExecResult> {
   try {
+    if (!options?.unsafe) {
+      assertSafeShellCommand(command);
+    }
+
     const result = await $`sh -c ${command}`.cwd(cwd ?? process.cwd()).quiet();
     return {
       success: result.exitCode === 0,
@@ -29,8 +38,9 @@ export async function exec(command: string, cwd?: string): Promise<ExecResult> {
 export async function execOrThrow(
   command: string,
   cwd?: string,
+  options?: { unsafe?: boolean },
 ): Promise<string> {
-  const result = await exec(command, cwd);
+  const result = await exec(command, cwd, options);
   if (!result.success)
     throw new Error(`Command failed: ${command}\n${result.stderr}`);
   return result.stdout;
