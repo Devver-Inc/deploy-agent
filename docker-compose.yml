@@ -1,0 +1,16 @@
+services:
+  deploy-agent:
+    build: .
+    container_name: deploy-agent
+    ports:
+      - "3080:80"
+    volumes:
+      - devver-app:/app
+      - devver-pm2:/root/.pm2
+    environment:
+      - DEVVER_SECRET=dev-secret-123
+      - NODE_ENV=production
+
+volumes:
+  devver-app:
+  devver-pm2:
