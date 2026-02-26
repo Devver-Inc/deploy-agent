@@ -71,7 +71,20 @@ export class PM2Manager {
   }
 
   async stop(name: string): Promise<void> {
-    await exec(`pm2 stop ${name}`);
+    await execOrThrow(`pm2 stop ${name}`);
+    await exec("pm2 save");
+  }
+
+  async startExisting(name: string): Promise<void> {
+    await execOrThrow(`pm2 start ${name}`);
+    await this.waitForProcess(name);
+    await exec("pm2 save");
+  }
+
+  async restart(name: string): Promise<void> {
+    await execOrThrow(`pm2 restart ${name} --update-env`);
+    await this.waitForProcess(name);
+    await exec("pm2 save");
   }
 
   async delete(name: string): Promise<void> {
