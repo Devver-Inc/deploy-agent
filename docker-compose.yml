@@ -1,6 +1,6 @@
 services:
   deploy-agent:
-    build: .
+    image: ghcr.io/devver-inc/deploy-agent:latest
     container_name: deploy-agent
     ports:
       - "3080:80"
