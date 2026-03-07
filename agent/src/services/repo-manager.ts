@@ -7,6 +7,7 @@ import { buildPostReceiveHook } from "./repo/repo-hook-template";
 import { assertRepoPathWithinBase } from "./repo/repo-path-guard";
 import { JsonRepoRepository } from "./repo/json-repo-repository";
 import type { RepoConfig, RepoRepository } from "./repo/repo-repository";
+import type { CreateRepoRequest } from "../types";
 
 const REPOS_BASE = "/app/repos";
 
@@ -23,7 +24,7 @@ export class RepoManager {
     return existsSync(this.getRepoPath(name));
   }
 
-  async create(name: string, baseUrl: string): Promise<void> {
+  async create({ name, baseUrl }: CreateRepoRequest): Promise<void> {
     if (!isValidRepoName(name)) {
       throw new Error("Invalid repository name.");
     }

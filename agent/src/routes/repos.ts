@@ -4,13 +4,15 @@ import { ApiErrorSchema, RepoSchema } from "../schemas";
 import { REPO_NAME_PATTERN } from "../utils/validation";
 import { deployService } from "../services/deploy-service";
 import { toApiError } from "../utils/api-error";
+import type { RepoResponse } from "../types";
 
 export const repoRoutes = new Elysia()
   .get(
     "/repos",
-    () =>
+    (): RepoResponse[] =>
       repoManager.list().map((r) => ({
-        ...r,
+        name: r.name,
+        createdAt: r.createdAt,
         pushUrl: repoManager.getPushUrl(r.name),
       })),
     {
@@ -22,7 +24,7 @@ export const repoRoutes = new Elysia()
     "/repos",
     async ({ body, set }) => {
       try {
-        await repoManager.create(body.name, body.baseUrl);
+        await repoManager.create(body);
         return {
           success: true as const,
           name: body.name,

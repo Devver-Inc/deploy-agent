@@ -39,7 +39,7 @@ export const deploymentRoutes = new Elysia()
 
   .get(
     "/deployments",
-    async ({ query }) => deployService.listDeployments(query.repo),
+    async ({ query }) => deployService.listDeployments(query),
     {
       query: t.Object({ repo: t.Optional(t.String({ minLength: 1 })) }),
       response: t.Array(DeploymentSchema),

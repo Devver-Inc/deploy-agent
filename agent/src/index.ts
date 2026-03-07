@@ -7,6 +7,19 @@ const DEVVER_SECRET = process.env.DEVVER_SECRET;
 const PORT = process.env.PORT ?? 8080;
 
 const app = new Elysia()
+  .onError(({ code, error, set }) => {
+    if (code === "VALIDATION") {
+      set.status = 422;
+      return {
+        success: false as const,
+        error: {
+          code: "VALIDATION_ERROR",
+          message: error.message,
+        },
+      };
+    }
+  })
+
   .onBeforeHandle(({ request, set, path }) => {
     if (path === "/health") return;
     const secret = request.headers.get("x-devver-secret");

@@ -42,6 +42,7 @@ export interface ServiceConfig {
 
 export interface CreateRepoRequest {
   name: string;
+  baseUrl: string;
 }
 
 export interface DeployRequest {
@@ -79,11 +80,21 @@ export interface DeploymentResponse {
   processes: PM2Process[];
 }
 
+export interface NginxConfigSnapshot {
+  exists: boolean;
+  content?: string;
+}
+
+export interface ServiceDeployResult {
+  port: number;
+  url: string;
+}
+
 export interface DeployResponse {
   success: true;
   branch: string;
   commit: string;
-  services: Record<string, { port: number; url: string }>;
+  services: Record<string, ServiceDeployResult>;
   duration: number;
 }
 

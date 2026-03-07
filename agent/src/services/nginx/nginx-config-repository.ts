@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { ensureDir } from "../../utils/fs";
+import type { NginxConfigSnapshot } from "../../types";
 
 const NGINX_CONF_DIR = "/app/nginx/conf.d";
 
@@ -20,7 +21,7 @@ export class NginxConfigRepository {
     }
   }
 
-  snapshot(deploymentId: string): { exists: boolean; content?: string } {
+  snapshot(deploymentId: string): NginxConfigSnapshot {
     const configPath = this.getConfigPath(deploymentId);
     if (!existsSync(configPath)) return { exists: false };
     return { exists: true, content: readFileSync(configPath, "utf-8") };

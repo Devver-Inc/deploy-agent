@@ -1,6 +1,7 @@
 import { exec, execOrThrow } from "../utils/exec";
 import { NginxConfigBuilder } from "./nginx/nginx-config-builder";
 import { NginxConfigRepository } from "./nginx/nginx-config-repository";
+import type { NginxConfigSnapshot } from "../types";
 
 export interface ServiceRoute {
   service: string;
@@ -34,10 +35,7 @@ export class NginxManager {
     this.repository.remove(deploymentId);
   }
 
-  getConfigSnapshot(deploymentId: string): {
-    exists: boolean;
-    content?: string;
-  } {
+  getConfigSnapshot(deploymentId: string): NginxConfigSnapshot {
     return this.repository.snapshot(deploymentId);
   }
 

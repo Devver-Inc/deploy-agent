@@ -5,6 +5,9 @@ import {
   DeployStage,
   ErrorCode,
   ServiceConfig,
+  DeploymentResponse,
+  ServiceDeployResult,
+  ListDeploymentsQuery,
 } from "../types";
 import { gitManager } from "./git-manager";
 import { portManager } from "./port-manager";
@@ -78,8 +81,7 @@ export class DeployService {
         await this.rollbackService.captureSnapshot(ctx, request);
         await this.setupWorktree(ctx, request);
         const orderedServices = topologicalSort(request.services);
-        const deployedServices: Record<string, { port: number; url: string }> =
-          {};
+        const deployedServices: Record<string, ServiceDeployResult> = {};
 
         for (const serviceName of orderedServices) {
           const result = await this.deploySingleService(
@@ -124,7 +126,7 @@ export class DeployService {
 
         const rollback = await this.rollbackService.rollback(ctx);
         return this.errors.buildErrorResponse(
-          normalized.code,
+          rollback.success ? normalized.code : ErrorCode.ROLLBACK_ERROR,
           normalized.message,
           normalized.logs,
           normalized.step,
@@ -143,7 +145,7 @@ export class DeployService {
     config: ServiceConfig,
     links: Record<string, string>,
     extraEnv: Record<string, string>,
-  ): Promise<{ port: number; url: string }> {
+  ): Promise<ServiceDeployResult> {
     const worktreePath = gitManager.getWorktreePath(ctx.branch, ctx.repo);
     const servicePath = config.root
       ? join(worktreePath, config.root)
@@ -224,12 +226,12 @@ export class DeployService {
     };
   }
 
-  async listDeployments(repo?: string) {
+  async listDeployments({ repo }: ListDeploymentsQuery = {}): Promise<DeploymentResponse[]> {
     const repos = repo ? [repo] : repoManager.list().map((r) => r.name);
     const processes = await pm2Manager.list();
     const ports = portManager.getAll();
 
-    const results = [];
+    const results: DeploymentResponse[] = [];
     for (const r of repos) {
       const branches = await gitManager.listWorktrees(r);
       for (const branch of branches) {
@@ -258,7 +260,7 @@ export class DeployService {
   }
 
   async deleteRepo(name: string): Promise<void> {
-    const deployments = await this.listDeployments(name);
+    const deployments = await this.listDeployments({ repo: name });
     for (const dep of deployments) {
       await this.removeDeployment(dep.branch, name);
     }
@@ -267,7 +269,7 @@ export class DeployService {
 
   private async setupNginx(
     ctx: DeployContext,
-    services: Record<string, { port: number; url: string }>,
+    services: Record<string, ServiceDeployResult>,
   ): Promise<void> {
     const routes = Object.entries(services).map(([service, { port }]) => ({
       service,

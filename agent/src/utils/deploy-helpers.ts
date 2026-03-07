@@ -8,7 +8,7 @@ export function topologicalSort(
   const visiting = new Set<string>();
   const result: string[] = [];
 
-  const visit = (name: string, stack: string[] = []) => {
+  const visit = (name: string, stack: string[] = []): void => {
     if (visited.has(name)) return;
     if (visiting.has(name)) {
       throw new Error(
