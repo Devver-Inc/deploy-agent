@@ -23,10 +23,18 @@ pm2 resurrect 2>/dev/null || true
 if [ -f "/usr/local/bin/deploy-agent" ]; then
     echo "Starting Deploy Agent (binary)..."
     chmod +x /usr/local/bin/deploy-agent
-    /usr/local/bin/deploy-agent &
+    while true; do
+        /usr/local/bin/deploy-agent
+        echo "Deploy Agent exited (code $?), restarting in 2s..."
+        sleep 2
+    done &
 elif [ -f "/app/agent/src/index.ts" ]; then
     echo "Starting Deploy Agent (dev mode)..."
-    cd /app/agent && bun run src/index.ts &
+    while true; do
+        cd /app/agent && bun run src/index.ts
+        echo "Deploy Agent exited (code $?), restarting in 2s..."
+        sleep 2
+    done &
 else
     echo "Deploy Agent not found. Mount it to /app/agent"
     echo "   Container will run without Deploy Agent for testing."
