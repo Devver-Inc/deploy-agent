@@ -71,6 +71,10 @@ export class RepoManager {
     return this.repository.getAll();
   }
 
+  getBaseUrl(name: string): string {
+    return this.repository.get(name)?.baseUrl ?? "";
+  }
+
   getPushUrl(name: string): string {
     const config = this.repository.get(name);
     const baseUrl = config?.baseUrl ?? "http://localhost";

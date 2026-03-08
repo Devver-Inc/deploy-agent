@@ -221,9 +221,10 @@ export class DeployService {
       };
     }
 
+    const baseUrl = repoManager.getBaseUrl(ctx.repo);
     return {
       port,
-      url: `/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`,
+      url: `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`,
     };
   }
 
