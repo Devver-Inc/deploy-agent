@@ -1,5 +1,4 @@
 import type { ServiceConfig } from "../types";
-import { portManager } from "../services/port-manager";
 
 export function topologicalSort(
   services: Record<string, ServiceConfig>,
@@ -48,15 +47,6 @@ export function prepareSmartCommand(cmd: string, port: number): string {
 
 export function buildEnvVars(
   extraEnv: Record<string, string>,
-  links: Record<string, string>,
 ): Record<string, string> {
-  const env: Record<string, string> = { NODE_ENV: "production", ...extraEnv };
-
-  for (const [depService, depDeploymentId] of Object.entries(links)) {
-    const depPort = portManager.getPort(depDeploymentId, depService);
-    if (depPort)
-      env[`${depService.toUpperCase()}_URL`] = `http://127.0.0.1:${depPort}`;
-  }
-
-  return env;
+  return { NODE_ENV: "production", ...extraEnv };
 }

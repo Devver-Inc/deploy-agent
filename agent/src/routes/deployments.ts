@@ -26,12 +26,12 @@ export const deploymentRoutes = new Elysia()
         t.Object({
           root: t.Optional(t.String()),
           install: t.Optional(t.String()),
+          skipInstall: t.Optional(t.Boolean()),
           build: t.String(),
           start: t.String(),
           depends: t.Optional(t.Array(t.String())),
         }),
       ),
-      links: t.Optional(t.Record(t.String(), t.Record(t.String(), t.String()))),
       env: t.Optional(t.Record(t.String(), t.Record(t.String(), t.String()))),
     }),
     response: t.Union([DeploySuccessSchema, DeployErrorSchema]),

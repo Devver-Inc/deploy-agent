@@ -88,7 +88,6 @@ export class DeployService {
             ctx,
             serviceName,
             request.services[serviceName],
-            request.links?.[serviceName] ?? {},
             request.env?.[serviceName] ?? {},
           );
           deployedServices[serviceName] = result;
@@ -143,7 +142,6 @@ export class DeployService {
     ctx: DeployContext,
     serviceName: string,
     config: ServiceConfig,
-    links: Record<string, string>,
     extraEnv: Record<string, string>,
   ): Promise<ServiceDeployResult> {
     const worktreePath = gitManager.getWorktreePath(ctx.branch, ctx.repo);
@@ -175,19 +173,21 @@ export class DeployService {
       port,
     );
     const env = {
-      ...buildEnvVars(extraEnv, links),
+      ...buildEnvVars(extraEnv),
       PORT: port.toString(),
       HOST: "0.0.0.0",
     };
 
-    await this.runCommand(
-      config.install || "bun install",
-      servicePath,
-      ErrorCode.INSTALL_ERROR,
-      serviceName,
-      2,
-      DeployStage.INSTALL,
-    );
+    if (!config.skipInstall) {
+      await this.runCommand(
+        config.install || "bun install",
+        servicePath,
+        ErrorCode.INSTALL_ERROR,
+        serviceName,
+        2,
+        DeployStage.INSTALL,
+      );
+    }
     if (config.build) {
       await this.runCommand(
         config.build,
@@ -209,6 +209,7 @@ export class DeployService {
         env,
       );
       ctx.startedProcesses.push(processName);
+      await this.waitForPort(port, serviceName);
     } catch (error: any) {
       throw {
         code: ErrorCode.PROCESS_ERROR,
@@ -327,6 +328,19 @@ export class DeployService {
         stage: DeployStage.WORKTREE,
       };
     }
+  }
+
+  private async waitForPort(port: number, service: string, timeoutMs = 60000): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        await fetch(`http://127.0.0.1:${port}`, { signal: AbortSignal.timeout(1000) });
+        return;
+      } catch {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    throw new Error(`Service '${service}' did not respond on port ${port} within ${timeoutMs}ms`);
   }
 
   private async runCommand(

@@ -55,7 +55,7 @@ export class PM2Manager {
     return name;
   }
 
-  async waitForProcess(name: string, timeoutMs = 10000): Promise<void> {
+  async waitForProcess(name: string, timeoutMs = 30000): Promise<void> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       const proc = (await this.list()).find((p) => p.name === name);

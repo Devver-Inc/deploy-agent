@@ -35,6 +35,7 @@ export enum ErrorCode {
 export interface ServiceConfig {
   root?: string;
   install?: string;
+  skipInstall?: boolean;
   build: string;
   start: string;
   depends?: string[];
@@ -50,7 +51,6 @@ export interface DeployRequest {
   branch: string;
   commit?: string;
   services: Record<string, ServiceConfig>;
-  links?: Record<string, Record<string, string>>;
   env?: Record<string, Record<string, string>>;
 }
 
