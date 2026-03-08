@@ -1,8 +1,10 @@
 import { exec, execOrThrow } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
 import type { PM2Process, LogEntry } from "../types";
-import { buildProcessName } from "./pm2/pm2-process-name";
+import { buildProcessName, matchesProcess, matchesDeployment } from "./pm2/pm2-process-name";
 import { parsePm2Logs } from "./pm2/pm2-log-parser";
+
+export { matchesDeployment };
 
 const PM2_SCRIPTS_DIR = "/app/data/pm2";
 
@@ -18,9 +20,10 @@ export class PM2Manager {
     const name = buildProcessName(service, branch, port);
     const { writeFileSync } = await import("fs");
 
-    if (await this.processExists(name)) {
-      await exec(`pm2 delete ${name}`);
-    }
+    const existing = (await this.list()).filter((p) =>
+      matchesProcess(p.name, service, branch),
+    );
+    await Promise.all(existing.map((p) => this.delete(p.name)));
 
     const envVars = { ...env, PORT: port.toString(), HOST: "0.0.0.0" };
     ensureDir(PM2_SCRIPTS_DIR);
@@ -95,7 +98,7 @@ export class PM2Manager {
   async deleteByBranch(branch: string): Promise<void> {
     const processes = await this.list();
     for (const proc of processes) {
-      if (proc.name.includes(`-${branch}-`)) await this.delete(proc.name);
+      if (matchesDeployment(proc.name, branch)) await this.delete(proc.name);
     }
   }
 
@@ -133,9 +136,7 @@ export class PM2Manager {
     lines = 50,
   ): Promise<LogEntry[]> {
     const processes = await this.list();
-    const matching = processes.filter((p) =>
-      p.name.includes(`-${deploymentId}-`),
-    );
+    const matching = processes.filter((p) => matchesDeployment(p.name, deploymentId));
 
     const logs: LogEntry[] = [];
     for (const proc of matching) {

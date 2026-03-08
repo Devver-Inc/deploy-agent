@@ -11,7 +11,7 @@ import {
 } from "../types";
 import { gitManager } from "./git-manager";
 import { portManager } from "./port-manager";
-import { pm2Manager } from "./pm2-manager";
+import { pm2Manager, matchesDeployment } from "./pm2-manager";
 import { nginxManager } from "./nginx-manager";
 import { repoManager } from "./repo-manager";
 import { exec } from "../utils/exec";
@@ -242,9 +242,7 @@ export class DeployService {
           branch,
           deploymentId,
           services: ports[deploymentId] ?? {},
-          processes: processes.filter((p) =>
-            p.name.includes(`-${deploymentId}-`),
-          ),
+          processes: processes.filter((p) => matchesDeployment(p.name, deploymentId)),
         });
       }
     }
