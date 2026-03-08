@@ -47,14 +47,13 @@ export const deploymentRoutes = new Elysia()
   )
 
   .delete(
-    "/deployments/:repository/:branch",
+    "/deployments/:deploymentId",
     async ({ params, set }) => {
       try {
-        await deployService.removeDeployment(params.branch, params.repository);
+        await deployService.removeDeployment(params.deploymentId);
         return {
           success: true as const,
-          branch: params.branch,
-          repository: params.repository,
+          deploymentId: params.deploymentId,
         };
       } catch (error: any) {
         const normalized = toApiError(error, {
@@ -67,14 +66,12 @@ export const deploymentRoutes = new Elysia()
     },
     {
       params: t.Object({
-        repository: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
-        branch: t.String({ minLength: 1, pattern: BRANCH_PATTERN }),
+        deploymentId: t.String({ minLength: 1 }),
       }),
       response: t.Union([
         t.Object({
           success: t.Literal(true),
-          branch: t.String(),
-          repository: t.String(),
+          deploymentId: t.String(),
         }),
         ApiErrorSchema,
       ]),

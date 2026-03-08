@@ -251,19 +251,34 @@ export class DeployService {
     return results;
   }
 
-  async removeDeployment(branch: string, repo: string): Promise<void> {
-    const deploymentId = gitManager.getDeploymentId(branch, repo);
-    await pm2Manager.deleteByBranch(deploymentId);
-    await gitManager.removeWorktree(branch, repo);
+  private async findDeploymentLocation(
+    deploymentId: string,
+  ): Promise<{ branch: string; repo: string } | undefined> {
+    for (const { name: repo } of repoManager.list()) {
+      const branch = (await gitManager.listWorktrees(repo)).find(
+        (b) => gitManager.getDeploymentId(b, repo) === deploymentId,
+      );
+      if (branch) return { branch, repo };
+    }
+  }
+
+  async removeDeployment(deploymentId: string): Promise<void> {
+    const location = await this.findDeploymentLocation(deploymentId);
+    await Promise.all([
+      pm2Manager.deleteByBranch(deploymentId),
+      location
+        ? gitManager.removeWorktree(location.branch, location.repo)
+        : Promise.resolve(),
+      nginxManager.removeConfig(deploymentId),
+    ]);
     portManager.release(deploymentId);
-    await nginxManager.removeConfig(deploymentId);
     await nginxManager.reload();
   }
 
   async deleteRepo(name: string): Promise<void> {
     const deployments = await this.listDeployments({ repo: name });
     for (const dep of deployments) {
-      await this.removeDeployment(dep.branch, name);
+      await this.removeDeployment(dep.deploymentId);
     }
     await repoManager.delete(name);
   }
