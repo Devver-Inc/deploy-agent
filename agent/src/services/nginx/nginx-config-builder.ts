@@ -33,7 +33,7 @@ export class NginxConfigBuilder {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         sub_filter_once off;
-        sub_filter_types text/html application/javascript text/javascript;
+        sub_filter_types application/javascript text/javascript;
         sub_filter 'src="/' 'src="${locationPath}/';
         sub_filter 'href="/' 'href="${locationPath}/';
         sub_filter "src='/" "src='${locationPath}/";
