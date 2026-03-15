@@ -52,8 +52,7 @@ export class PortManager {
     return this.withLock(async () => {
       const existing = this.repository.getBranch(branch)?.[service];
       if (existing) {
-        if (await isPortAvailable(existing)) return existing;
-        this.release(branch, service);
+        return existing;
       }
 
       const allocated = this.getAllocatedPorts();
