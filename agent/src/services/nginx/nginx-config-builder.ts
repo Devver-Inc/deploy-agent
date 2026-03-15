@@ -1,13 +1,20 @@
 import { safeBranch } from "../../utils/branch";
 import type { ServiceRoute } from "../nginx-manager";
 
+
 export class NginxConfigBuilder {
   private buildUrlPrefix(repo: string, branch: string): string {
     return `/${repo}/${safeBranch(branch)}`;
   }
 
+  private buildWidgetSnippet(repo: string, branch: string): string {
+    const ctx = JSON.stringify({ repo, branch });
+    return `<script>window.__DEVVER__=${ctx};(function(){var d=document.createElement('div');d.style.cssText='position:fixed;bottom:16px;right:16px;background:#1a1a1a;color:#fff;font-family:monospace;font-size:12px;padding:8px 12px;border-radius:6px;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,.4)';d.textContent='\\u2713 __DEVVER__ | repo: ${repo} | branch: ${branch}';document.body.appendChild(d);})()</script></body>`;
+  }
+
   build(repo: string, branch: string, services: ServiceRoute[]): string {
     const prefix = this.buildUrlPrefix(repo, branch);
+    const widgetSnippet = this.buildWidgetSnippet(repo, branch);
 
     return services
       .map(({ service, port, path }) => {
@@ -40,6 +47,7 @@ export class NginxConfigBuilder {
         sub_filter "href='/" "href='${locationPath}/";
         sub_filter '"/' '"${locationPath}/';
         sub_filter "'/" "'${locationPath}/";
+        sub_filter '</body>' '${widgetSnippet}';
     }
 
     location ~* ^${locationPath}/(assets|static|_next|__vite_ping|@vite|node_modules|@fs|@id)(.*)$ {
