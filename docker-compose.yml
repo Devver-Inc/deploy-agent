@@ -10,7 +10,7 @@ services:
     environment:
       - DEVVER_SECRET=dev-secret-123
       - NODE_ENV=production
-      - DEVVER_WIDGET_URL=
+      - DEVVER_WIDGET_URL=https://cdn.jsdelivr.net/gh/Devver-Inc/overlay@main/public/devver-overlay.iife.js
 
 volumes:
   devver-app:
