@@ -10,6 +10,8 @@ services:
     environment:
       - DEVVER_SECRET=dev-secret-123
       - NODE_ENV=production
+      - DEVVER_WIDGET_URL=
+      - PORT=8080
 
 volumes:
   devver-app:
