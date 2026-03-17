@@ -1,8 +1,8 @@
-import type { DeployStage, ErrorCode, NginxConfigSnapshot, ServiceDeployResult } from "../../types";
+import type { DeployStage, ErrorCode, NginxConfigSnapshot, PortRegistryEntry } from "../../types";
 
 export interface RollbackSnapshot {
   previousCommit?: string;
-  previousServices: Record<string, ServiceDeployResult>;
+  previousEntry?: PortRegistryEntry;
   nginxConfig: NginxConfigSnapshot;
 }
 
@@ -28,7 +28,7 @@ export interface DeployContext {
   requestId: string;
   commit: string;
   isNewWorktree: boolean;
-  startedProcesses: string[];
-  allocatedPorts: { deploymentId: string; service: string }[];
+  startedProcess?: string;
+  portAllocated: boolean;
   rollbackSnapshot?: RollbackSnapshot;
 }

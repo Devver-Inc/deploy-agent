@@ -15,18 +15,17 @@ export const deploymentRoutes = new Elysia()
       repo: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
       branch: t.String({ minLength: 1, pattern: BRANCH_PATTERN }),
       commit: t.Optional(t.String({ pattern: COMMIT_PATTERN })),
-      services: t.Record(
-        t.String(),
+      service: t.Record(
+        t.Union([t.Literal("web"), t.Literal("api")]),
         t.Object({
           root: t.Optional(t.String()),
           install: t.Optional(t.String()),
           skipInstall: t.Optional(t.Boolean()),
           build: t.String(),
           start: t.String(),
-          depends: t.Optional(t.Array(t.String())),
         }),
       ),
-      env: t.Optional(t.Record(t.String(), t.Record(t.String(), t.String()))),
+      env: t.Optional(t.Record(t.String(), t.String())),
     }),
   })
 

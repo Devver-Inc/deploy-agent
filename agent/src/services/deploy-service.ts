@@ -6,7 +6,6 @@ import {
   ErrorCode,
   ServiceConfig,
   DeploymentResponse,
-  ServiceDeployResult,
   ListDeploymentsQuery,
 } from "../types";
 import { gitManager } from "./git-manager";
@@ -15,11 +14,7 @@ import { pm2Manager, matchesDeployment } from "./pm2-manager";
 import { nginxManager } from "./nginx-manager";
 import { repoManager } from "./repo-manager";
 import { exec } from "../utils/exec";
-import {
-  topologicalSort,
-  prepareSmartCommand,
-  buildEnvVars,
-} from "../utils/deploy-helpers";
+import { prepareSmartCommand, buildEnvVars } from "../utils/deploy-helpers";
 import { safeBranch } from "../utils/branch";
 import { join } from "path";
 import { DeploymentLock } from "./deploy/deployment-lock";
@@ -53,9 +48,10 @@ export class DeployService {
       requestId,
       commit: request.commit ?? "",
       isNewWorktree: false,
-      startedProcesses: [],
-      allocatedPorts: [],
+      portAllocated: false,
     };
+
+    const [serviceName, serviceConfig] = Object.entries(request.service)[0];
 
     return this.lock.withLock(ctx.deploymentId, async () => {
       this.logger.log("info", "deploy.start", {
@@ -63,7 +59,7 @@ export class DeployService {
         repo: request.repo,
         branch: request.branch,
         deploymentId,
-        services: Object.keys(request.services),
+        serviceName,
       });
 
       try {
@@ -80,20 +76,15 @@ export class DeployService {
 
         await this.rollbackService.captureSnapshot(ctx, request);
         await this.setupWorktree(ctx, request);
-        const orderedServices = topologicalSort(request.services);
-        const deployedServices: Record<string, ServiceDeployResult> = {};
 
-        for (const serviceName of orderedServices) {
-          const result = await this.deploySingleService(
-            ctx,
-            serviceName,
-            request.services[serviceName],
-            request.env?.[serviceName] ?? {},
-          );
-          deployedServices[serviceName] = result;
-        }
+        const { port, url } = await this.deployService(
+          ctx,
+          serviceName,
+          serviceConfig,
+          request.env ?? {},
+        );
 
-        await this.setupNginx(ctx, deployedServices);
+        await this.setupNginx(ctx, serviceName, port);
 
         this.logger.log("info", "deploy.success", {
           requestId: ctx.requestId,
@@ -104,14 +95,18 @@ export class DeployService {
         });
 
         const processes = await pm2Manager.list();
+        const process = processes.find((p) => matchesDeployment(p.name, ctx.deploymentId)) ?? null;
+
         return {
           success: true,
           repo: ctx.repo,
           branch: ctx.branch,
           deploymentId: ctx.deploymentId,
           commit: ctx.commit,
-          services: deployedServices,
-          processes: processes.filter((p) => matchesDeployment(p.name, ctx.deploymentId)),
+          serviceName,
+          port,
+          url,
+          process,
           duration: Date.now() - startTime,
         };
       } catch (error: any) {
@@ -142,12 +137,12 @@ export class DeployService {
     });
   }
 
-  private async deploySingleService(
+  private async deployService(
     ctx: DeployContext,
     serviceName: string,
     config: ServiceConfig,
     extraEnv: Record<string, string>,
-  ): Promise<ServiceDeployResult> {
+  ): Promise<{ port: number; url: string }> {
     const worktreePath = gitManager.getWorktreePath(ctx.branch, ctx.repo);
     const servicePath = config.root
       ? join(worktreePath, config.root)
@@ -155,7 +150,7 @@ export class DeployService {
 
     let port: number;
     try {
-      port = await portManager.allocate(ctx.deploymentId, serviceName);
+      port = await portManager.allocate(ctx.deploymentId);
     } catch (error: any) {
       throw {
         code: ErrorCode.PORT_CONFLICT,
@@ -167,10 +162,7 @@ export class DeployService {
       };
     }
 
-    ctx.allocatedPorts.push({
-      deploymentId: ctx.deploymentId,
-      service: serviceName,
-    });
+    ctx.portAllocated = true;
 
     const smartCommand = prepareSmartCommand(
       config.start || "bun run start",
@@ -212,7 +204,7 @@ export class DeployService {
         servicePath,
         env,
       );
-      ctx.startedProcesses.push(processName);
+      ctx.startedProcess = processName;
       await this.waitForPort(port, serviceName);
     } catch (error: any) {
       throw {
@@ -226,12 +218,11 @@ export class DeployService {
     }
 
     const baseUrl = repoManager.getBaseUrl(ctx.repo);
-    const result: ServiceDeployResult = {
-      port,
-      url: `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`,
-    };
-    portManager.updateService(ctx.deploymentId, serviceName, result);
-    return result;
+    const url = `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`;
+
+    portManager.update(ctx.deploymentId, { serviceName, port, url });
+
+    return { port, url };
   }
 
   async listDeployments({ repo }: ListDeploymentsQuery = {}): Promise<DeploymentResponse[]> {
@@ -245,13 +236,16 @@ export class DeployService {
       for (const branch of branches) {
         const deploymentId = gitManager.getDeploymentId(branch, r);
         const commit = await gitManager.getCurrentCommit(branch, r);
+        const entry = registry[deploymentId];
         results.push({
           repo: r,
           branch,
           deploymentId,
           commit,
-          services: registry[deploymentId] ?? {},
-          processes: processes.filter((p) => matchesDeployment(p.name, deploymentId)),
+          serviceName: entry?.serviceName ?? "",
+          port: entry?.port ?? 0,
+          url: entry?.url ?? "",
+          process: processes.find((p) => matchesDeployment(p.name, deploymentId)) ?? null,
         });
       }
     }
@@ -292,18 +286,15 @@ export class DeployService {
 
   private async setupNginx(
     ctx: DeployContext,
-    services: Record<string, ServiceDeployResult>,
+    serviceName: string,
+    port: number,
   ): Promise<void> {
-    const routes = Object.entries(services).map(([service, { port }]) => ({
-      service,
-      port,
-    }));
     try {
       await nginxManager.writeConfig(
         ctx.deploymentId,
         ctx.repo,
         ctx.branch,
-        routes,
+        { service: serviceName, port },
       );
       await nginxManager.reload();
     } catch (error: any) {

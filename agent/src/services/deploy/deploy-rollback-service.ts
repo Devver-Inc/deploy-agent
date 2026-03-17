@@ -18,7 +18,7 @@ export class DeployRollbackService {
     ctx: DeployContext,
     request: DeployRequest,
   ): Promise<void> {
-    const previousServices = { ...portManager.getBranchPorts(ctx.deploymentId) };
+    const previousEntry = portManager.get(ctx.deploymentId);
     const nginxConfig = nginxManager.getConfigSnapshot(ctx.deploymentId);
     let previousCommit: string | undefined;
 
@@ -42,7 +42,7 @@ export class DeployRollbackService {
 
     const rollbackSnapshot: RollbackSnapshot = {
       previousCommit,
-      previousServices,
+      previousEntry,
       nginxConfig,
     };
 
@@ -52,29 +52,31 @@ export class DeployRollbackService {
   async rollback(ctx: DeployContext): Promise<RollbackResult> {
     const issues: string[] = [];
 
-    for (const processName of ctx.startedProcesses) {
+    if (ctx.startedProcess) {
       try {
-        await pm2Manager.delete(processName);
+        await pm2Manager.delete(ctx.startedProcess);
       } catch (error: any) {
         issues.push(
-          `pm2 delete ${processName}: ${error?.message ?? "unknown error"}`,
+          `pm2 delete ${ctx.startedProcess}: ${error?.message ?? "unknown error"}`,
         );
       }
     }
 
     if (ctx.rollbackSnapshot) {
       try {
-        portManager.setBranchPorts(
-          ctx.deploymentId,
-          ctx.rollbackSnapshot.previousServices,
-        );
+        if (ctx.rollbackSnapshot.previousEntry) {
+          portManager.update(
+            ctx.deploymentId,
+            ctx.rollbackSnapshot.previousEntry,
+          );
+        } else {
+          portManager.release(ctx.deploymentId);
+        }
       } catch (error: any) {
         issues.push(`restore ports: ${error?.message ?? "unknown error"}`);
       }
-    } else {
-      for (const portRef of ctx.allocatedPorts) {
-        portManager.release(portRef.deploymentId, portRef.service);
-      }
+    } else if (ctx.portAllocated) {
+      portManager.release(ctx.deploymentId);
     }
 
     if (ctx.isNewWorktree) {

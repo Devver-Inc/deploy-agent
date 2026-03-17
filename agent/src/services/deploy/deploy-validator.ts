@@ -21,18 +21,17 @@ export class DeployValidator {
       throw this.validationFailure("Invalid commit hash.");
     }
 
-    for (const [service, config] of Object.entries(request.services)) {
-      try {
-        assertSafeShellCommand(config.install || "bun install");
-        assertSafeShellCommand(config.build);
-        assertSafeShellCommand(config.start);
-      } catch (error: any) {
-        throw this.validationFailure(
-          `Unsafe command detected in service '${service}'.`,
-          error?.message,
-          service,
-        );
-      }
+    const [serviceName, config] = Object.entries(request.service)[0];
+    try {
+      assertSafeShellCommand(config.install || "bun install");
+      assertSafeShellCommand(config.build);
+      assertSafeShellCommand(config.start);
+    } catch (error: any) {
+      throw this.validationFailure(
+        `Unsafe command detected in service '${serviceName}'.`,
+        error?.message,
+        serviceName,
+      );
     }
   }
 

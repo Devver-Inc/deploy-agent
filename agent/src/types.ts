@@ -38,7 +38,6 @@ export interface ServiceConfig {
   skipInstall?: boolean;
   build: string;
   start: string;
-  depends?: string[];
 }
 
 export interface CreateRepoRequest {
@@ -46,12 +45,14 @@ export interface CreateRepoRequest {
   baseUrl: string;
 }
 
+export type ServiceName = "web" | "api";
+
 export interface DeployRequest {
   repo: string;
   branch: string;
   commit?: string;
-  services: Record<string, ServiceConfig>;
-  env?: Record<string, Record<string, string>>;
+  service: Partial<Record<ServiceName, ServiceConfig>>;
+  env?: Record<string, string>;
 }
 
 export interface ListDeploymentsQuery {
@@ -72,18 +73,15 @@ export interface PM2Process {
   memory: number;
 }
 
-export interface ServiceDeployResult {
-  port: number;
-  url: string;
-}
-
 export interface DeploymentResponse {
   repo: string;
   branch: string;
   deploymentId: string;
   commit: string;
-  services: Record<string, ServiceDeployResult>;
-  processes: PM2Process[];
+  serviceName: string;
+  port: number;
+  url: string;
+  process: PM2Process | null;
 }
 
 export interface NginxConfigSnapshot {
@@ -125,6 +123,12 @@ export interface LogsResponse {
   logs: LogEntry[];
 }
 
+export interface PortRegistryEntry {
+  serviceName: string;
+  port: number;
+  url: string;
+}
+
 export interface PortRegistry {
-  [branch: string]: Record<string, ServiceDeployResult>;
+  [deploymentId: string]: PortRegistryEntry;
 }

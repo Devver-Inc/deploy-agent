@@ -13,20 +13,13 @@ export class NginxConfigBuilder {
     return `<script>window.__DEVVER__=${ctx}</script><script src="${DEVVER_WIDGET_URL}" defer></script></body>`;
   }
 
-  build(repo: string, branch: string, services: ServiceRoute[]): string {
+  build(repo: string, branch: string, { service, port }: ServiceRoute): string {
     const prefix = this.buildUrlPrefix(repo, branch);
     const widgetSnippet = this.buildWidgetSnippet(repo, branch);
+    const urlSuffix = service !== "web" ? `/${service}` : "";
+    const locationPath = `${prefix}${urlSuffix}`;
 
-    return services
-      .map(({ service, port, path }) => {
-        const urlSuffix = path
-          ? `/${path.replace(/^\/+/, "")}`
-          : service !== "web"
-            ? `/${service}`
-            : "";
-        const locationPath = `${prefix}${urlSuffix}`;
-
-        return `
+    return `
     location = ${locationPath} {
         return 301 \$scheme://\$http_host${locationPath}/;
     }
@@ -64,7 +57,5 @@ export class NginxConfigBuilder {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
     }`;
-      })
-      .join("\n");
   }
 }

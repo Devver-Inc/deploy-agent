@@ -6,7 +6,6 @@ import type { NginxConfigSnapshot } from "../types";
 export interface ServiceRoute {
   service: string;
   port: number;
-  path?: string;
 }
 
 export class NginxManager {
@@ -17,9 +16,9 @@ export class NginxManager {
     deploymentId: string,
     repo: string,
     branch: string,
-    services: ServiceRoute[],
+    route: ServiceRoute,
   ): Promise<void> {
-    const config = this.builder.build(repo, branch, services);
+    const config = this.builder.build(repo, branch, route);
     this.repository.write(deploymentId, config);
 
     const test = await this.testConfig();
