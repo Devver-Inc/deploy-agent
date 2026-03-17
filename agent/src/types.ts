@@ -73,14 +73,17 @@ export interface PM2Process {
   memory: number;
 }
 
+export interface ServiceDeployResult {
+  port: number;
+  url: string;
+}
+
 export interface DeploymentResponse {
   repo: string;
   branch: string;
   deploymentId: string;
   commit: string;
-  serviceName: string;
-  port: number;
-  url: string;
+  service: Partial<Record<ServiceName, ServiceDeployResult>>;
   process: PM2Process | null;
 }
 
@@ -124,7 +127,7 @@ export interface LogsResponse {
 }
 
 export interface PortRegistryEntry {
-  serviceName: string;
+  serviceName: ServiceName;
   port: number;
   url: string;
 }

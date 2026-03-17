@@ -1,5 +1,5 @@
 import { createServer } from "net";
-import type { PortRegistry, PortRegistryEntry } from "../types";
+import type { PortRegistry, PortRegistryEntry, ServiceName } from "../types";
 import { JsonPortRepository } from "./port/json-port-repository";
 import type { PortRepository } from "./port/port-repository";
 
@@ -48,7 +48,7 @@ export class PortManager {
     return ports;
   }
 
-  async allocate(deploymentId: string): Promise<number> {
+  async allocate(deploymentId: string, serviceName: ServiceName): Promise<number> {
     return this.withLock(async () => {
       const existing = this.repository.get(deploymentId);
       if (existing) return existing.port;
@@ -61,7 +61,7 @@ export class PortManager {
       }
       if (port >= MAX_PORT) throw new Error("No available ports");
 
-      this.repository.set(deploymentId, { serviceName: "", port, url: "" });
+      this.repository.set(deploymentId, { serviceName, port, url: "" });
       return port;
     });
   }

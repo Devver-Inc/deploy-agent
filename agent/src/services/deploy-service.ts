@@ -7,6 +7,7 @@ import {
   ServiceConfig,
   DeploymentResponse,
   ListDeploymentsQuery,
+  type ServiceName,
 } from "../types";
 import { gitManager } from "./git-manager";
 import { portManager } from "./port-manager";
@@ -103,9 +104,7 @@ export class DeployService {
           branch: ctx.branch,
           deploymentId: ctx.deploymentId,
           commit: ctx.commit,
-          serviceName,
-          port,
-          url,
+          service: { [serviceName]: { port, url } },
           process,
           duration: Date.now() - startTime,
         };
@@ -150,7 +149,7 @@ export class DeployService {
 
     let port: number;
     try {
-      port = await portManager.allocate(ctx.deploymentId);
+      port = await portManager.allocate(ctx.deploymentId, serviceName as ServiceName);
     } catch (error: any) {
       throw {
         code: ErrorCode.PORT_CONFLICT,
@@ -220,7 +219,7 @@ export class DeployService {
     const baseUrl = repoManager.getBaseUrl(ctx.repo);
     const url = `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`;
 
-    portManager.update(ctx.deploymentId, { serviceName, port, url });
+    portManager.update(ctx.deploymentId, { serviceName: serviceName as ServiceName, port, url });
 
     return { port, url };
   }
@@ -242,9 +241,7 @@ export class DeployService {
           branch,
           deploymentId,
           commit,
-          serviceName: entry?.serviceName ?? "",
-          port: entry?.port ?? 0,
-          url: entry?.url ?? "",
+          service: entry ? { [entry.serviceName]: { port: entry.port, url: entry.url } } : {},
           process: processes.find((p) => matchesDeployment(p.name, deploymentId)) ?? null,
         });
       }
