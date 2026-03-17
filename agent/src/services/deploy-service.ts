@@ -35,120 +35,120 @@ export class DeployService {
   async deploy(
     request: DeployRequest,
   ): Promise<DeployResponse | ErrorResponse> {
-    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const startTime = Date.now();
-    const deploymentId = gitManager.getDeploymentId(
-      request.branch,
-      request.repo,
-    );
-
     const ctx: DeployContext = {
       repo: request.repo,
       branch: request.branch,
-      deploymentId,
-      requestId,
+      deploymentId: gitManager.getDeploymentId(request.branch, request.repo),
+      requestId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       commit: request.commit ?? "",
       isNewWorktree: false,
       portAllocated: false,
     };
 
-    const entries = Object.entries(request.service);
-    const [serviceName, serviceConfig] = entries[0] ?? [];
-
     return this.lock.withLock(ctx.deploymentId, async () => {
       try {
-        if (!serviceName || !serviceConfig) {
-          throw {
-            code: ErrorCode.VALIDATION_ERROR,
-            message: "Request must include exactly one service (web or api).",
-            step: 0,
-            stage: DeployStage.VALIDATION,
-          };
-        }
-
-        this.logger.log("info", "deploy.start", {
-          requestId: ctx.requestId,
-          repo: request.repo,
-          branch: request.branch,
-          deploymentId,
-          serviceName,
-        });
-
-        this.validator.validateRequest(request);
-
-        if (!repoManager.exists(request.repo)) {
-          throw {
-            code: ErrorCode.REPO_NOT_FOUND,
-            message: `Repo '${request.repo}' does not exist. Create it first via POST /repos.`,
-            step: 0,
-            stage: DeployStage.VALIDATION,
-          };
-        }
-
-        await this.rollbackService.captureSnapshot(ctx, request);
-        await this.setupWorktree(ctx, request);
-
-        const { port, url } = await this.deployService(
-          ctx,
-          serviceName,
-          serviceConfig,
-          request.env ?? {},
-        );
-
-        await this.setupNginx(ctx, serviceName, port);
-
-        this.logger.log("info", "deploy.success", {
-          requestId: ctx.requestId,
-          repo: ctx.repo,
-          branch: ctx.branch,
-          commit: ctx.commit,
-          durationMs: Date.now() - startTime,
-        });
-
-        const processes = await pm2Manager.list();
-        const process = processes.find((p) => matchesDeployment(p.name, ctx.deploymentId)) ?? null;
-
-        return {
-          success: true,
-          repo: ctx.repo,
-          branch: ctx.branch,
-          deploymentId: ctx.deploymentId,
-          commit: ctx.commit,
-          service: { [serviceName]: { port, url } },
-          process,
-          duration: Date.now() - startTime,
-        };
+        return await this.executeDeploy(ctx, request, startTime);
       } catch (error: any) {
-        const normalized = this.errors.normalize(error);
-        this.logger.log("error", "deploy.failed", {
-          requestId: ctx.requestId,
-          repo: ctx.repo,
-          branch: ctx.branch,
-          code: normalized.code,
-          step: normalized.step,
-          stage: normalized.stage,
-          service: normalized.service,
-          message: normalized.message,
-        });
-
-        const rollback = await this.rollbackService.rollback(ctx);
-        return this.errors.buildErrorResponse(
-          rollback.success ? normalized.code : ErrorCode.ROLLBACK_ERROR,
-          normalized.message,
-          normalized.logs,
-          normalized.step,
-          normalized.stage,
-          normalized.service,
-          rollback,
-          Date.now() - startTime,
-        );
+        return this.handleDeployError(ctx, error, startTime);
       }
     });
   }
 
+  private async executeDeploy(
+    ctx: DeployContext,
+    request: DeployRequest,
+    startTime: number,
+  ): Promise<DeployResponse> {
+    const [name, serviceConfig] = Object.entries(request.service)[0] ?? [];
+    if (!name || !serviceConfig) {
+      throw {
+        code: ErrorCode.VALIDATION_ERROR,
+        message: "Request must include exactly one service (web or api).",
+        step: 0,
+        stage: DeployStage.VALIDATION,
+      };
+    }
+    const serviceName = name as ServiceName;
+
+    this.logger.log("info", "deploy.start", {
+      requestId: ctx.requestId,
+      repo: ctx.repo,
+      branch: ctx.branch,
+      deploymentId: ctx.deploymentId,
+      serviceName,
+    });
+
+    this.validator.validateRequest(request);
+
+    if (!repoManager.exists(request.repo)) {
+      throw {
+        code: ErrorCode.REPO_NOT_FOUND,
+        message: `Repo '${request.repo}' does not exist. Create it first via POST /repos.`,
+        step: 0,
+        stage: DeployStage.VALIDATION,
+      };
+    }
+
+    await this.rollbackService.captureSnapshot(ctx, request);
+    await this.setupWorktree(ctx, request);
+
+    const { port, url } = await this.deployService(
+      ctx, serviceName, serviceConfig, request.env ?? {},
+    );
+
+    await this.setupNginx(ctx, serviceName, port);
+
+    this.logger.log("info", "deploy.success", {
+      requestId: ctx.requestId,
+      repo: ctx.repo,
+      branch: ctx.branch,
+      commit: ctx.commit,
+      durationMs: Date.now() - startTime,
+    });
+
+    const processes = await pm2Manager.list();
+    return {
+      success: true,
+      repo: ctx.repo,
+      branch: ctx.branch,
+      deploymentId: ctx.deploymentId,
+      commit: ctx.commit,
+      service: { [serviceName]: { port, url } },
+      process: processes.find((p) => matchesDeployment(p.name, ctx.deploymentId)) ?? null,
+      duration: Date.now() - startTime,
+    };
+  }
+
+  private async handleDeployError(
+    ctx: DeployContext,
+    error: any,
+    startTime: number,
+  ): Promise<ErrorResponse> {
+    const normalized = this.errors.normalize(error);
+    this.logger.log("error", "deploy.failed", {
+      requestId: ctx.requestId,
+      repo: ctx.repo,
+      branch: ctx.branch,
+      ...normalized,
+    });
+
+    const rollback = await this.rollbackService.rollback(ctx);
+    return this.errors.buildErrorResponse(
+      rollback.success ? normalized.code : ErrorCode.ROLLBACK_ERROR,
+      normalized.message,
+      normalized.logs,
+      normalized.step,
+      normalized.stage,
+      normalized.service,
+      rollback,
+      Date.now() - startTime,
+    );
+  }
+
   private async deployService(
     ctx: DeployContext,
-    serviceName: string,
+    serviceName: ServiceName,
     config: ServiceConfig,
     extraEnv: Record<string, string>,
   ): Promise<{ port: number; url: string }> {
@@ -157,9 +157,35 @@ export class DeployService {
       ? join(worktreePath, config.root)
       : worktreePath;
 
-    let port: number;
+    const port = await this.allocatePort(ctx, serviceName);
+
+    if (!config.skipInstall) {
+      await this.runCommand(
+        config.install || "bun install",
+        servicePath, ErrorCode.INSTALL_ERROR, serviceName, 2, DeployStage.INSTALL,
+      );
+    }
+    if (config.build) {
+      await this.runCommand(
+        config.build,
+        servicePath, ErrorCode.BUILD_ERROR, serviceName, 3, DeployStage.BUILD,
+      );
+    }
+
+    await this.startProcess(ctx, serviceName, config, port, servicePath, extraEnv);
+
+    const baseUrl = repoManager.getBaseUrl(ctx.repo);
+    const url = `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`;
+    portManager.update(ctx.deploymentId, { serviceName, port, url });
+
+    return { port, url };
+  }
+
+  private async allocatePort(ctx: DeployContext, serviceName: ServiceName): Promise<number> {
     try {
-      port = await portManager.allocate(ctx.deploymentId, serviceName as ServiceName);
+      const port = await portManager.allocate(ctx.deploymentId, serviceName);
+      ctx.portAllocated = true;
+      return port;
     } catch (error: any) {
       throw {
         code: ErrorCode.PORT_CONFLICT,
@@ -170,50 +196,27 @@ export class DeployService {
         service: serviceName,
       };
     }
+  }
 
-    ctx.portAllocated = true;
-
-    const smartCommand = prepareSmartCommand(
-      config.start || "bun run start",
-      port,
-    );
+  private async startProcess(
+    ctx: DeployContext,
+    serviceName: string,
+    config: ServiceConfig,
+    port: number,
+    servicePath: string,
+    extraEnv: Record<string, string>,
+  ): Promise<void> {
+    const command = prepareSmartCommand(config.start || "bun run start", port);
     const env = {
       ...buildEnvVars(extraEnv),
       PORT: port.toString(),
       HOST: "0.0.0.0",
     };
 
-    if (!config.skipInstall) {
-      await this.runCommand(
-        config.install || "bun install",
-        servicePath,
-        ErrorCode.INSTALL_ERROR,
-        serviceName,
-        2,
-        DeployStage.INSTALL,
-      );
-    }
-    if (config.build) {
-      await this.runCommand(
-        config.build,
-        servicePath,
-        ErrorCode.BUILD_ERROR,
-        serviceName,
-        3,
-        DeployStage.BUILD,
-      );
-    }
-
     try {
-      const processName = await pm2Manager.start(
-        serviceName,
-        ctx.deploymentId,
-        port,
-        smartCommand,
-        servicePath,
-        env,
+      ctx.startedProcess = await pm2Manager.start(
+        serviceName, ctx.deploymentId, port, command, servicePath, env,
       );
-      ctx.startedProcess = processName;
       await this.waitForPort(port, serviceName);
     } catch (error: any) {
       throw {
@@ -225,13 +228,6 @@ export class DeployService {
         stage: DeployStage.PROCESS,
       };
     }
-
-    const baseUrl = repoManager.getBaseUrl(ctx.repo);
-    const url = `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`;
-
-    portManager.update(ctx.deploymentId, { serviceName: serviceName as ServiceName, port, url });
-
-    return { port, url };
   }
 
   async listDeployments({ repo }: ListDeploymentsQuery = {}): Promise<DeploymentResponse[]> {
