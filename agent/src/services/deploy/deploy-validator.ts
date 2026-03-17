@@ -21,7 +21,11 @@ export class DeployValidator {
       throw this.validationFailure("Invalid commit hash.");
     }
 
-    const [serviceName, config] = Object.entries(request.service)[0];
+    const entries = Object.entries(request.service);
+    if (entries.length === 0) {
+      throw this.validationFailure("Request must include exactly one service.");
+    }
+    const [serviceName, config] = entries[0]!;
     try {
       assertSafeShellCommand(config.install || "bun install");
       assertSafeShellCommand(config.build);

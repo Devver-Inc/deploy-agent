@@ -1,6 +1,8 @@
+import { config } from "../../config";
+
 export function buildPostReceiveHook(repoName: string): string {
   return `#!/bin/bash
-DEPLOYMENTS_DIR="/app/deployments/${repoName}"
+DEPLOYMENTS_DIR="${config.paths.deployments}/${repoName}"
 while read oldrev newrev refname; do
     branch=\$(echo "\$refname" | sed 's|refs/heads/||')
     worktree_path="\$DEPLOYMENTS_DIR/\$branch"

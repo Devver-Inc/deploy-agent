@@ -2,6 +2,7 @@ import { createServer } from "net";
 import type { PortRegistry, PortRegistryEntry, ServiceName } from "../types";
 import { JsonPortRepository } from "./port/json-port-repository";
 import type { PortRepository } from "./port/port-repository";
+import { AsyncMutex } from "../utils/async-mutex";
 
 const BASE_PORT = 3000;
 const MAX_PORT = 9000;
@@ -21,24 +22,7 @@ async function isPortAvailable(port: number): Promise<boolean> {
 export class PortManager {
   constructor(private repository: PortRepository = new JsonPortRepository()) {}
 
-  private queue: Promise<void> = Promise.resolve();
-
-  private async withLock<T>(fn: () => Promise<T> | T): Promise<T> {
-    let release: () => void = () => {};
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-
-    const previous = this.queue;
-    this.queue = previous.then(() => next);
-
-    await previous;
-    try {
-      return await fn();
-    } finally {
-      release();
-    }
-  }
+  private mutex = new AsyncMutex();
 
   private getAllocatedPorts(): Set<number> {
     const ports = new Set<number>();
@@ -49,7 +33,7 @@ export class PortManager {
   }
 
   async allocate(deploymentId: string, serviceName: ServiceName): Promise<number> {
-    return this.withLock(async () => {
+    return this.mutex.run(async () => {
       const existing = this.repository.get(deploymentId);
       if (existing) return existing.port;
 

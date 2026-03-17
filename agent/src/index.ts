@@ -4,6 +4,9 @@ import { deploymentRoutes } from "./routes/deployments";
 import { logRoutes } from "./routes/logs";
 
 const DEVVER_SECRET = process.env.DEVVER_SECRET;
+if (!DEVVER_SECRET) {
+  throw new Error("DEVVER_SECRET environment variable is required");
+}
 const PORT = process.env.PORT ?? 8080;
 
 const app = new Elysia()

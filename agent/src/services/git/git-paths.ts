@@ -1,10 +1,9 @@
 import { safeBranch } from "../../utils/branch";
-
-const DEPLOYMENTS_BASE = "/app/deployments";
+import { config } from "../../config";
 
 export class GitPaths {
   getDeploymentsPath(repo: string): string {
-    return `${DEPLOYMENTS_BASE}/${repo}`;
+    return `${config.paths.deployments}/${repo}`;
   }
 
   getWorktreePath(branch: string, repo: string): string {

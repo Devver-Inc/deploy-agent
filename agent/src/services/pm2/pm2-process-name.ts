@@ -1,3 +1,18 @@
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const regexCache = new Map<string, RegExp>();
+
+function getCachedRegex(pattern: string): RegExp {
+  let re = regexCache.get(pattern);
+  if (!re) {
+    re = new RegExp(pattern);
+    regexCache.set(pattern, re);
+  }
+  return re;
+}
+
 export function buildProcessName(
   service: string,
   deploymentId: string,
@@ -7,9 +22,11 @@ export function buildProcessName(
 }
 
 export function matchesProcess(processName: string, service: string, deploymentId: string): boolean {
-  return new RegExp(`^${service}-${deploymentId}-\\d+$`).test(processName);
+  const pattern = `^${escapeRegex(service)}-${escapeRegex(deploymentId)}-\\d+$`;
+  return getCachedRegex(pattern).test(processName);
 }
 
 export function matchesDeployment(processName: string, deploymentId: string): boolean {
-  return new RegExp(`-${deploymentId}-\\d+$`).test(processName);
+  const pattern = `-${escapeRegex(deploymentId)}-\\d+$`;
+  return getCachedRegex(pattern).test(processName);
 }

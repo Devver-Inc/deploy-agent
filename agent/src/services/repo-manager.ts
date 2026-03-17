@@ -8,16 +8,15 @@ import { assertRepoPathWithinBase } from "./repo/repo-path-guard";
 import { JsonRepoRepository } from "./repo/json-repo-repository";
 import type { RepoConfig, RepoRepository } from "./repo/repo-repository";
 import type { CreateRepoRequest } from "../types";
-
-const REPOS_BASE = "/app/repos";
+import { config } from "../config";
 
 export class RepoManager {
   constructor(private repository: RepoRepository = new JsonRepoRepository()) {
-    ensureDir(REPOS_BASE);
+    ensureDir(config.paths.repos);
   }
 
   getRepoPath(name: string): string {
-    return `${REPOS_BASE}/${name}.git`;
+    return `${config.paths.repos}/${name}.git`;
   }
 
   exists(name: string): boolean {
@@ -39,7 +38,7 @@ export class RepoManager {
     await execOrThrow(`git config http.receivepack true`, repoPath);
     await execOrThrow(`git config --global --add safe.directory ${repoPath}`);
     await execOrThrow(
-      `git config --global --add safe.directory '/app/deployments/${name}/*'`,
+      `git config --global --add safe.directory '${config.paths.deployments}/${name}/*'`,
     );
 
     writeFileSync(`${repoPath}/hooks/post-receive`, buildPostReceiveHook(name));
@@ -61,7 +60,7 @@ export class RepoManager {
     const repoPath = this.getRepoPath(name);
     if (!existsSync(repoPath)) return;
 
-    assertRepoPathWithinBase(REPOS_BASE, repoPath);
+    assertRepoPathWithinBase(config.paths.repos, repoPath);
 
     await rm(repoPath, { recursive: true, force: true });
     this.repository.remove(name);
@@ -72,7 +71,9 @@ export class RepoManager {
   }
 
   getBaseUrl(name: string): string {
-    return this.repository.get(name)?.baseUrl ?? "";
+    const repo = this.repository.get(name);
+    if (!repo) throw new Error(`Repo '${name}' not found in registry`);
+    return repo.baseUrl;
   }
 
   getPushUrl(name: string): string {

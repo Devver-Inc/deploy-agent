@@ -1,12 +1,13 @@
+import { writeFileSync } from "fs";
 import { exec, execOrThrow } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
 import type { PM2Process, LogEntry } from "../types";
 import { buildProcessName, matchesProcess, matchesDeployment } from "./pm2/pm2-process-name";
 import { parsePm2Logs } from "./pm2/pm2-log-parser";
+import { config } from "../config";
+import { pollUntil } from "../utils/poll-until";
 
 export { matchesDeployment };
-
-const PM2_SCRIPTS_DIR = "/app/data/pm2";
 
 export class PM2Manager {
   async start(
@@ -18,7 +19,6 @@ export class PM2Manager {
     env: Record<string, string> = {},
   ): Promise<string> {
     const name = buildProcessName(service, branch, port);
-    const { writeFileSync } = await import("fs");
 
     const existing = (await this.list()).filter((p) =>
       matchesProcess(p.name, service, branch),
@@ -26,9 +26,9 @@ export class PM2Manager {
     await Promise.all(existing.map((p) => this.delete(p.name)));
 
     const envVars = { ...env, PORT: port.toString(), HOST: "0.0.0.0" };
-    ensureDir(PM2_SCRIPTS_DIR);
-    const ecosystemFile = `${PM2_SCRIPTS_DIR}/${name}.config.js`;
-    const wrapperScript = `${PM2_SCRIPTS_DIR}/${name}.sh`;
+    ensureDir(config.paths.pm2Data);
+    const ecosystemFile = `${config.paths.pm2Data}/${name}.config.js`;
+    const wrapperScript = `${config.paths.pm2Data}/${name}.sh`;
 
     writeFileSync(
       ecosystemFile,
@@ -59,18 +59,17 @@ export class PM2Manager {
   }
 
   async waitForProcess(name: string, timeoutMs = 30000): Promise<void> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      const proc = (await this.list()).find((p) => p.name === name);
-      if (proc?.status === "online") return;
-      if (proc?.status === "errored") {
-        throw new Error(
-          `Process ${name} failed:\n${await this.getLogs(name, 20)}`,
-        );
-      }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    throw new Error(`Process ${name} timed out`);
+    await pollUntil(
+      async () => {
+        const proc = (await this.list()).find((p) => p.name === name);
+        if (proc?.status === "errored") {
+          throw new Error(`Process ${name} failed:\n${await this.getLogs(name, 20)}`);
+        }
+        return proc?.status === "online";
+      },
+      timeoutMs,
+      `Process ${name} timed out after ${timeoutMs}ms`,
+    );
   }
 
   async stop(name: string): Promise<void> {

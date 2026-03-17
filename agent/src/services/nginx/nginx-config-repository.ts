@@ -1,16 +1,15 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { ensureDir } from "../../utils/fs";
 import type { NginxConfigSnapshot } from "../../types";
-
-const NGINX_CONF_DIR = "/app/nginx/conf.d";
+import { config } from "../../config";
 
 export class NginxConfigRepository {
   getConfigPath(deploymentId: string): string {
-    return `${NGINX_CONF_DIR}/${deploymentId}.conf`;
+    return `${config.paths.nginxConfDir}/${deploymentId}.conf`;
   }
 
   write(deploymentId: string, content: string): void {
-    ensureDir(NGINX_CONF_DIR);
+    ensureDir(config.paths.nginxConfDir);
     writeFileSync(this.getConfigPath(deploymentId), content);
   }
 

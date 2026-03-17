@@ -18,6 +18,8 @@ import { exec } from "../utils/exec";
 import { prepareSmartCommand, buildEnvVars } from "../utils/deploy-helpers";
 import { safeBranch } from "../utils/branch";
 import { join } from "path";
+import { DeployError } from "../utils/deploy-error";
+import { pollUntil } from "../utils/poll-until";
 import { DeploymentLock } from "./deploy/deployment-lock";
 import { DeployValidator } from "./deploy/deploy-validator";
 import { DeployLogger } from "./deploy/deploy-logger";
@@ -49,7 +51,7 @@ export class DeployService {
     return this.lock.withLock(ctx.deploymentId, async () => {
       try {
         return await this.executeDeploy(ctx, request, startTime);
-      } catch (error: any) {
+      } catch (error: unknown) {
         return this.handleDeployError(ctx, error, startTime);
       }
     });
@@ -60,15 +62,14 @@ export class DeployService {
     request: DeployRequest,
     startTime: number,
   ): Promise<DeployResponse> {
-    const [name, serviceConfig] = Object.entries(request.service)[0] ?? [];
-    if (!name || !serviceConfig) {
-      throw {
-        code: ErrorCode.VALIDATION_ERROR,
-        message: "Request must include exactly one service (web or api).",
+    const entries = Object.entries(request.service);
+    if (entries.length === 0 || !entries[0]) {
+      throw new DeployError(ErrorCode.VALIDATION_ERROR, "Request must include exactly one service (web or api).", {
         step: 0,
         stage: DeployStage.VALIDATION,
-      };
+      });
     }
+    const [name, serviceConfig] = entries[0];
     const serviceName = name as ServiceName;
 
     this.logger.log("info", "deploy.start", {
@@ -82,12 +83,10 @@ export class DeployService {
     this.validator.validateRequest(request);
 
     if (!repoManager.exists(request.repo)) {
-      throw {
-        code: ErrorCode.REPO_NOT_FOUND,
-        message: `Repo '${request.repo}' does not exist. Create it first via POST /repos.`,
+      throw new DeployError(ErrorCode.REPO_NOT_FOUND, `Repo '${request.repo}' does not exist. Create it first via POST /repos.`, {
         step: 0,
         stage: DeployStage.VALIDATION,
-      };
+      });
     }
 
     await this.rollbackService.captureSnapshot(ctx, request);
@@ -122,7 +121,7 @@ export class DeployService {
 
   private async handleDeployError(
     ctx: DeployContext,
-    error: any,
+    error: unknown,
     startTime: number,
   ): Promise<ErrorResponse> {
     const normalized = this.errors.normalize(error);
@@ -186,15 +185,13 @@ export class DeployService {
       const port = await portManager.allocate(ctx.deploymentId, serviceName);
       ctx.portAllocated = true;
       return port;
-    } catch (error: any) {
-      throw {
-        code: ErrorCode.PORT_CONFLICT,
-        message: `Failed to allocate port for service '${serviceName}'.`,
-        logs: error?.message,
+    } catch (error: unknown) {
+      throw new DeployError(ErrorCode.PORT_CONFLICT, `Failed to allocate port for service '${serviceName}'.`, {
+        logs: error instanceof Error ? error.message : String(error),
         step: 2,
         stage: DeployStage.INSTALL,
         service: serviceName,
-      };
+      });
     }
   }
 
@@ -218,15 +215,13 @@ export class DeployService {
         serviceName, ctx.deploymentId, port, command, servicePath, env,
       );
       await this.waitForPort(port, serviceName);
-    } catch (error: any) {
-      throw {
-        code: ErrorCode.PROCESS_ERROR,
-        message: `Failed to start process for service '${serviceName}'.`,
-        logs: error?.message,
+    } catch (error: unknown) {
+      throw new DeployError(ErrorCode.PROCESS_ERROR, `Failed to start process for service '${serviceName}'.`, {
+        logs: error instanceof Error ? error.message : String(error),
         service: serviceName,
         step: 4,
         stage: DeployStage.PROCESS,
-      };
+      });
     }
   }
 
@@ -300,14 +295,12 @@ export class DeployService {
         { service: serviceName, port },
       );
       await nginxManager.reload();
-    } catch (error: any) {
-      throw {
-        code: ErrorCode.NGINX_ERROR,
-        message: "Failed to write or reload Nginx configuration.",
-        logs: error?.message,
+    } catch (error: unknown) {
+      throw new DeployError(ErrorCode.NGINX_ERROR, "Failed to write or reload Nginx configuration.", {
+        logs: error instanceof Error ? error.message : String(error),
         step: 5,
         stage: DeployStage.NGINX,
-      };
+      });
     }
   }
 
@@ -335,28 +328,30 @@ export class DeployService {
         request.branch,
         request.repo,
       );
-    } catch (error: any) {
-      throw {
-        code: ErrorCode.GIT_ERROR,
-        message: "Failed to setup deployment worktree.",
-        logs: error?.message,
+    } catch (error: unknown) {
+      throw new DeployError(ErrorCode.GIT_ERROR, "Failed to setup deployment worktree.", {
+        logs: error instanceof Error ? error.message : String(error),
         step: 1,
         stage: DeployStage.WORKTREE,
-      };
+      });
     }
   }
 
   private async waitForPort(port: number, service: string, timeoutMs = 60000): Promise<void> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      try {
-        await fetch(`http://127.0.0.1:${port}`, { signal: AbortSignal.timeout(1000) });
-        return;
-      } catch {
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-    throw new Error(`Service '${service}' did not respond on port ${port} within ${timeoutMs}ms`);
+    // Checks port reachability only — any HTTP response (including 4xx/5xx) means the
+    // process is up. Connection errors (ECONNREFUSED, timeout) mean it's not ready yet.
+    await pollUntil(
+      async () => {
+        try {
+          await fetch(`http://127.0.0.1:${port}`, { signal: AbortSignal.timeout(1000) });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      timeoutMs,
+      `Service '${service}' did not respond on port ${port} within ${timeoutMs}ms`,
+    );
   }
 
   private async runCommand(
@@ -376,14 +371,12 @@ export class DeployService {
         result.stdout,
         result.stderr,
       );
-      throw {
-        code: errorCode,
-        message: `${stage} command failed for service '${service}' (exit code ${result.exitCode}).`,
+      throw new DeployError(errorCode, `${stage} command failed for service '${service}' (exit code ${result.exitCode}).`, {
         logs,
         step,
         stage,
         service,
-      };
+      });
     }
   }
 }

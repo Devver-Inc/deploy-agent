@@ -4,10 +4,11 @@ import type {
   RepoRepository,
   ReposRegistry,
 } from "./repo-repository";
+import { config } from "../../config";
 
 export class JsonRepoRepository implements RepoRepository {
   private registry = new JsonRegistry<ReposRegistry>(
-    "/app/data/repos.json",
+    config.paths.reposFile,
     {},
   );
 

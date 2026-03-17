@@ -1,9 +1,10 @@
 import { DeployStage, ErrorCode, type ErrorResponse } from "../../types";
 import type { DeployFailure, RollbackResult } from "./internal-types";
+import { DeployError } from "../../utils/deploy-error";
 
 export class DeployErrorFactory {
-  normalize(error: any): DeployFailure {
-    if (error && typeof error === "object" && error.code && error.message) {
+  normalize(error: unknown): DeployFailure {
+    if (error instanceof DeployError) {
       return {
         code: error.code,
         message: error.message,

@@ -48,8 +48,8 @@ export class NginxManager {
   }
 
   async reload(): Promise<void> {
-    const { success, logs } = await this.testConfig();
-    if (!success) throw new Error(`Cannot reload Nginx:\n${logs}`);
+    // Config is validated at write time via writeConfig → testConfig.
+    // nginx -s reload is safe on invalid config: nginx keeps the running config.
     await execOrThrow("nginx -s reload");
   }
 }
