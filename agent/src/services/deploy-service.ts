@@ -52,18 +52,28 @@ export class DeployService {
       portAllocated: false,
     };
 
-    const [serviceName, serviceConfig] = Object.entries(request.service)[0];
+    const entries = Object.entries(request.service);
+    const [serviceName, serviceConfig] = entries[0] ?? [];
 
     return this.lock.withLock(ctx.deploymentId, async () => {
-      this.logger.log("info", "deploy.start", {
-        requestId: ctx.requestId,
-        repo: request.repo,
-        branch: request.branch,
-        deploymentId,
-        serviceName,
-      });
-
       try {
+        if (!serviceName || !serviceConfig) {
+          throw {
+            code: ErrorCode.VALIDATION_ERROR,
+            message: "Request must include exactly one service (web or api).",
+            step: 0,
+            stage: DeployStage.VALIDATION,
+          };
+        }
+
+        this.logger.log("info", "deploy.start", {
+          requestId: ctx.requestId,
+          repo: request.repo,
+          branch: request.branch,
+          deploymentId,
+          serviceName,
+        });
+
         this.validator.validateRequest(request);
 
         if (!repoManager.exists(request.repo)) {
