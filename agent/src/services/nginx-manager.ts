@@ -48,8 +48,6 @@ export class NginxManager {
   }
 
   async reload(): Promise<void> {
-    // Config is validated at write time via writeConfig → testConfig.
-    // nginx -s reload is safe on invalid config: nginx keeps the running config.
     await execOrThrow("nginx -s reload");
   }
 }

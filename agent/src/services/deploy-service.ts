@@ -338,8 +338,6 @@ export class DeployService {
   }
 
   private async waitForPort(port: number, service: string, timeoutMs = 60000): Promise<void> {
-    // Checks port reachability only — any HTTP response (including 4xx/5xx) means the
-    // process is up. Connection errors (ECONNREFUSED, timeout) mean it's not ready yet.
     await pollUntil(
       async () => {
         try {

@@ -9,9 +9,6 @@ export class NginxConfigBuilder {
   }
 
   private buildWidgetSnippet(repo: string, branch: string): string {
-    // JSON.stringify produces valid JSON with all special characters escaped,
-    // preventing XSS when injected into a <script> tag as a JS literal.
-    // repo and branch are pre-validated by regex in validation.ts.
     const ctx = JSON.stringify({ repo, branch });
     return `<script>window.__DEVVER__=${ctx}</script><script src="${DEVVER_WIDGET_URL}" defer></script></body>`;
   }
