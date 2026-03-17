@@ -1,5 +1,5 @@
 import { createServer } from "net";
-import type { PortRegistry } from "../types";
+import type { PortRegistry, ServiceDeployResult } from "../types";
 import { JsonPortRepository } from "./port/json-port-repository";
 import type { PortRepository } from "./port/port-repository";
 
@@ -43,7 +43,7 @@ export class PortManager {
   private getAllocatedPorts(): Set<number> {
     const ports = new Set<number>();
     for (const branch of Object.values(this.repository.getAll())) {
-      for (const port of Object.values(branch)) ports.add(port);
+      for (const svc of Object.values(branch)) ports.add(svc.port);
     }
     return ports;
   }
@@ -52,7 +52,7 @@ export class PortManager {
     return this.withLock(async () => {
       const existing = this.repository.getBranch(branch)?.[service];
       if (existing) {
-        return existing;
+        return existing.port;
       }
 
       const allocated = this.getAllocatedPorts();
@@ -63,39 +63,45 @@ export class PortManager {
       }
       if (port >= MAX_PORT) throw new Error("No available ports");
 
-      const branchPorts = this.repository.getBranch(branch) ?? {};
-      branchPorts[service] = port;
-      this.repository.setBranch(branch, branchPorts);
+      const branchServices = this.repository.getBranch(branch) ?? {};
+      branchServices[service] = { port, url: "" };
+      this.repository.setBranch(branch, branchServices);
       return port;
     });
   }
 
-  getPort(branch: string, service: string): number | undefined {
-    return this.repository.getBranch(branch)?.[service];
+  updateService(branch: string, service: string, result: ServiceDeployResult): void {
+    const branchServices = this.repository.getBranch(branch) ?? {};
+    branchServices[service] = result;
+    this.repository.setBranch(branch, branchServices);
   }
 
-  getBranchPorts(branch: string): Record<string, number> {
+  getPort(branch: string, service: string): number | undefined {
+    return this.repository.getBranch(branch)?.[service]?.port;
+  }
+
+  getBranchPorts(branch: string): Record<string, ServiceDeployResult> {
     return this.repository.getBranch(branch) ?? {};
   }
 
-  setBranchPorts(branch: string, ports: Record<string, number>): void {
-    if (Object.keys(ports).length === 0) {
+  setBranchPorts(branch: string, services: Record<string, ServiceDeployResult>): void {
+    if (Object.keys(services).length === 0) {
       this.repository.removeBranch(branch);
       return;
     }
-    this.repository.setBranch(branch, { ...ports });
+    this.repository.setBranch(branch, { ...services });
   }
 
   release(branch: string, service?: string): void {
-    const branchPorts = this.repository.getBranch(branch);
-    if (!branchPorts) return;
+    const branchServices = this.repository.getBranch(branch);
+    if (!branchServices) return;
 
     if (service) {
-      delete branchPorts[service];
-      if (Object.keys(branchPorts).length === 0) {
+      delete branchServices[service];
+      if (Object.keys(branchServices).length === 0) {
         this.repository.removeBranch(branch);
       } else {
-        this.repository.setBranch(branch, branchPorts);
+        this.repository.setBranch(branch, branchServices);
       }
     } else {
       this.repository.removeBranch(branch);

@@ -18,7 +18,7 @@ export class DeployRollbackService {
     ctx: DeployContext,
     request: DeployRequest,
   ): Promise<void> {
-    const previousPorts = { ...portManager.getBranchPorts(ctx.deploymentId) };
+    const previousServices = { ...portManager.getBranchPorts(ctx.deploymentId) };
     const nginxConfig = nginxManager.getConfigSnapshot(ctx.deploymentId);
     let previousCommit: string | undefined;
 
@@ -42,7 +42,7 @@ export class DeployRollbackService {
 
     const rollbackSnapshot: RollbackSnapshot = {
       previousCommit,
-      previousPorts,
+      previousServices,
       nginxConfig,
     };
 
@@ -66,7 +66,7 @@ export class DeployRollbackService {
       try {
         portManager.setBranchPorts(
           ctx.deploymentId,
-          ctx.rollbackSnapshot.previousPorts,
+          ctx.rollbackSnapshot.previousServices,
         );
       } catch (error: any) {
         issues.push(`restore ports: ${error?.message ?? "unknown error"}`);

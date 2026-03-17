@@ -72,11 +72,17 @@ export interface PM2Process {
   memory: number;
 }
 
+export interface ServiceDeployResult {
+  port: number;
+  url: string;
+}
+
 export interface DeploymentResponse {
   repo: string;
   branch: string;
   deploymentId: string;
-  services: Record<string, number>;
+  commit: string;
+  services: Record<string, ServiceDeployResult>;
   processes: PM2Process[];
 }
 
@@ -85,16 +91,8 @@ export interface NginxConfigSnapshot {
   content?: string;
 }
 
-export interface ServiceDeployResult {
-  port: number;
-  url: string;
-}
-
-export interface DeployResponse {
+export interface DeployResponse extends DeploymentResponse {
   success: true;
-  branch: string;
-  commit: string;
-  services: Record<string, ServiceDeployResult>;
   duration: number;
 }
 
@@ -128,5 +126,5 @@ export interface LogsResponse {
 }
 
 export interface PortRegistry {
-  [branch: string]: { [service: string]: number };
+  [branch: string]: Record<string, ServiceDeployResult>;
 }

@@ -1,8 +1,8 @@
-import type { DeployStage, ErrorCode, NginxConfigSnapshot } from "../../types";
+import type { DeployStage, ErrorCode, NginxConfigSnapshot, ServiceDeployResult } from "../../types";
 
 export interface RollbackSnapshot {
   previousCommit?: string;
-  previousPorts: Record<string, number>;
+  previousServices: Record<string, ServiceDeployResult>;
   nginxConfig: NginxConfigSnapshot;
 }
 

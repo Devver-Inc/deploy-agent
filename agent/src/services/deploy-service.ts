@@ -103,11 +103,15 @@ export class DeployService {
           durationMs: Date.now() - startTime,
         });
 
+        const processes = await pm2Manager.list();
         return {
           success: true,
+          repo: ctx.repo,
           branch: ctx.branch,
+          deploymentId: ctx.deploymentId,
           commit: ctx.commit,
           services: deployedServices,
+          processes: processes.filter((p) => matchesDeployment(p.name, ctx.deploymentId)),
           duration: Date.now() - startTime,
         };
       } catch (error: any) {
@@ -222,27 +226,31 @@ export class DeployService {
     }
 
     const baseUrl = repoManager.getBaseUrl(ctx.repo);
-    return {
+    const result: ServiceDeployResult = {
       port,
       url: `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`,
     };
+    portManager.updateService(ctx.deploymentId, serviceName, result);
+    return result;
   }
 
   async listDeployments({ repo }: ListDeploymentsQuery = {}): Promise<DeploymentResponse[]> {
     const repos = repo ? [repo] : repoManager.list().map((r) => r.name);
     const processes = await pm2Manager.list();
-    const ports = portManager.getAll();
+    const registry = portManager.getAll();
 
     const results: DeploymentResponse[] = [];
     for (const r of repos) {
       const branches = await gitManager.listWorktrees(r);
       for (const branch of branches) {
         const deploymentId = gitManager.getDeploymentId(branch, r);
+        const commit = await gitManager.getCurrentCommit(branch, r);
         results.push({
           repo: r,
           branch,
           deploymentId,
-          services: ports[deploymentId] ?? {},
+          commit,
+          services: registry[deploymentId] ?? {},
           processes: processes.filter((p) => matchesDeployment(p.name, deploymentId)),
         });
       }

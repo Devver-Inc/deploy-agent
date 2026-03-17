@@ -1,4 +1,4 @@
-import type { PortRegistry } from "../../types";
+import type { PortRegistry, ServiceDeployResult } from "../../types";
 import { JsonRegistry } from "../../utils/registry";
 import type { PortRepository } from "./port-repository";
 
@@ -9,14 +9,14 @@ export class JsonPortRepository implements PortRepository {
     return { ...this.registry.entries };
   }
 
-  getBranch(branch: string): Record<string, number> | undefined {
+  getBranch(branch: string): Record<string, ServiceDeployResult> | undefined {
     const value = this.registry.get(branch);
     if (!value) return undefined;
     return { ...value };
   }
 
-  setBranch(branch: string, ports: Record<string, number>): void {
-    this.registry.set(branch, { ...ports });
+  setBranch(branch: string, services: Record<string, ServiceDeployResult>): void {
+    this.registry.set(branch, { ...services });
   }
 
   removeBranch(branch: string): void {

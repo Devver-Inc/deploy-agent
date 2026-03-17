@@ -1,6 +1,5 @@
 import { Elysia, t } from "elysia";
 import { repoManager } from "../services/repo-manager";
-import { ApiErrorSchema, RepoSchema } from "../schemas";
 import { REPO_NAME_PATTERN } from "../utils/validation";
 import { deployService } from "../services/deploy-service";
 import { toApiError } from "../utils/api-error";
@@ -15,9 +14,6 @@ export const repoRoutes = new Elysia()
         createdAt: r.createdAt,
         pushUrl: repoManager.getPushUrl(r.name),
       })),
-    {
-      response: t.Array(RepoSchema),
-    },
   )
 
   .post(
@@ -44,14 +40,6 @@ export const repoRoutes = new Elysia()
         name: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
         baseUrl: t.String(),
       }),
-      response: t.Union([
-        t.Object({
-          success: t.Literal(true),
-          name: t.String(),
-          pushUrl: t.String(),
-        }),
-        ApiErrorSchema,
-      ]),
     },
   )
 
@@ -74,9 +62,5 @@ export const repoRoutes = new Elysia()
       params: t.Object({
         name: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
       }),
-      response: t.Union([
-        t.Object({ success: t.Literal(true), name: t.String() }),
-        ApiErrorSchema,
-      ]),
     },
   );

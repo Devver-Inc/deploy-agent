@@ -1,12 +1,6 @@
 import { Elysia, t } from "elysia";
 import { deployService } from "../services/deploy-service";
 import {
-  ApiErrorSchema,
-  DeploymentSchema,
-  DeploySuccessSchema,
-  DeployErrorSchema,
-} from "../schemas";
-import {
   BRANCH_PATTERN,
   COMMIT_PATTERN,
   PM2_PROCESS_PATTERN,
@@ -34,7 +28,6 @@ export const deploymentRoutes = new Elysia()
       ),
       env: t.Optional(t.Record(t.String(), t.Record(t.String(), t.String()))),
     }),
-    response: t.Union([DeploySuccessSchema, DeployErrorSchema]),
   })
 
   .get(
@@ -42,7 +35,6 @@ export const deploymentRoutes = new Elysia()
     async ({ query }) => deployService.listDeployments(query),
     {
       query: t.Object({ repo: t.Optional(t.String({ minLength: 1 })) }),
-      response: t.Array(DeploymentSchema),
     },
   )
 
@@ -68,13 +60,6 @@ export const deploymentRoutes = new Elysia()
       params: t.Object({
         deploymentId: t.String({ minLength: 1 }),
       }),
-      response: t.Union([
-        t.Object({
-          success: t.Literal(true),
-          deploymentId: t.String(),
-        }),
-        ApiErrorSchema,
-      ]),
     },
   )
 
@@ -101,14 +86,6 @@ export const deploymentRoutes = new Elysia()
       body: t.Object({
         name: t.String({ minLength: 1, pattern: PM2_PROCESS_PATTERN }),
       }),
-      response: t.Union([
-        t.Object({
-          success: t.Literal(true),
-          name: t.String(),
-          action: t.Literal("start"),
-        }),
-        ApiErrorSchema,
-      ]),
     },
   )
 
@@ -135,14 +112,6 @@ export const deploymentRoutes = new Elysia()
       body: t.Object({
         name: t.String({ minLength: 1, pattern: PM2_PROCESS_PATTERN }),
       }),
-      response: t.Union([
-        t.Object({
-          success: t.Literal(true),
-          name: t.String(),
-          action: t.Literal("stop"),
-        }),
-        ApiErrorSchema,
-      ]),
     },
   )
 
@@ -169,13 +138,5 @@ export const deploymentRoutes = new Elysia()
       body: t.Object({
         name: t.String({ minLength: 1, pattern: PM2_PROCESS_PATTERN }),
       }),
-      response: t.Union([
-        t.Object({
-          success: t.Literal(true),
-          name: t.String(),
-          action: t.Literal("restart"),
-        }),
-        ApiErrorSchema,
-      ]),
     },
   );

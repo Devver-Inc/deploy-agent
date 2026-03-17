@@ -1,6 +1,5 @@
-import { Elysia, t } from "elysia";
+import { Elysia } from "elysia";
 import { pm2Manager } from "../services/pm2-manager";
-import { ApiErrorSchema, LogEntrySchema } from "../schemas";
 import { toApiError } from "../utils/api-error";
 import type { LogsResponse } from "../types";
 
@@ -20,11 +19,5 @@ export const logRoutes = new Elysia().get(
       set.status = normalized.status;
       return normalized.body;
     }
-  },
-  {
-    response: t.Union([
-      t.Object({ logs: t.Array(LogEntrySchema) }),
-      ApiErrorSchema,
-    ]),
   },
 );
