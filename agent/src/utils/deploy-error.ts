@@ -14,7 +14,11 @@ export class DeployError extends Error {
   readonly stage?: DeployStage;
   readonly service?: string;
 
-  constructor(code: ErrorCode, message: string, options?: DeployFailureOptions) {
+  constructor(
+    code: ErrorCode,
+    message: string,
+    options?: DeployFailureOptions,
+  ) {
     super(message);
     this.name = "DeployError";
     this.code = code;

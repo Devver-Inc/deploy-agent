@@ -1,4 +1,9 @@
-import type { DeployStage, ErrorCode, NginxConfigSnapshot, PortRegistryEntry } from "../../types";
+import type {
+  DeployStage,
+  ErrorCode,
+  NginxConfigSnapshot,
+  PortRegistryEntry,
+} from "../../types";
 
 export interface RollbackSnapshot {
   previousCommit?: string;

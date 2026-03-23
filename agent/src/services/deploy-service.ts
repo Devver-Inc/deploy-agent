@@ -64,10 +64,14 @@ export class DeployService {
   ): Promise<DeployResponse> {
     const entries = Object.entries(request.service);
     if (entries.length === 0 || !entries[0]) {
-      throw new DeployError(ErrorCode.VALIDATION_ERROR, "Request must include exactly one service (web or api).", {
-        step: 0,
-        stage: DeployStage.VALIDATION,
-      });
+      throw new DeployError(
+        ErrorCode.VALIDATION_ERROR,
+        "Request must include exactly one service (web or api).",
+        {
+          step: 0,
+          stage: DeployStage.VALIDATION,
+        },
+      );
     }
     const [name, serviceConfig] = entries[0];
     const serviceName = name as ServiceName;
@@ -83,17 +87,24 @@ export class DeployService {
     this.validator.validateRequest(request);
 
     if (!repoManager.exists(request.repo)) {
-      throw new DeployError(ErrorCode.REPO_NOT_FOUND, `Repo '${request.repo}' does not exist. Create it first via POST /repos.`, {
-        step: 0,
-        stage: DeployStage.VALIDATION,
-      });
+      throw new DeployError(
+        ErrorCode.REPO_NOT_FOUND,
+        `Repo '${request.repo}' does not exist. Create it first via POST /repos.`,
+        {
+          step: 0,
+          stage: DeployStage.VALIDATION,
+        },
+      );
     }
 
     await this.rollbackService.captureSnapshot(ctx, request);
     await this.setupWorktree(ctx, request);
 
     const { port, url } = await this.deployService(
-      ctx, serviceName, serviceConfig, request.env ?? {},
+      ctx,
+      serviceName,
+      serviceConfig,
+      request.env ?? {},
     );
 
     await this.setupNginx(ctx, serviceName, port);
@@ -114,7 +125,9 @@ export class DeployService {
       deploymentId: ctx.deploymentId,
       commit: ctx.commit,
       service: { [serviceName]: { port, url } },
-      process: processes.find((p) => matchesDeployment(p.name, ctx.deploymentId)) ?? null,
+      process:
+        processes.find((p) => matchesDeployment(p.name, ctx.deploymentId)) ??
+        null,
       duration: Date.now() - startTime,
     };
   }
@@ -161,17 +174,32 @@ export class DeployService {
     if (!config.skipInstall) {
       await this.runCommand(
         config.install || "bun install",
-        servicePath, ErrorCode.INSTALL_ERROR, serviceName, 2, DeployStage.INSTALL,
+        servicePath,
+        ErrorCode.INSTALL_ERROR,
+        serviceName,
+        2,
+        DeployStage.INSTALL,
       );
     }
     if (config.build) {
       await this.runCommand(
         config.build,
-        servicePath, ErrorCode.BUILD_ERROR, serviceName, 3, DeployStage.BUILD,
+        servicePath,
+        ErrorCode.BUILD_ERROR,
+        serviceName,
+        3,
+        DeployStage.BUILD,
       );
     }
 
-    await this.startProcess(ctx, serviceName, config, port, servicePath, extraEnv);
+    await this.startProcess(
+      ctx,
+      serviceName,
+      config,
+      port,
+      servicePath,
+      extraEnv,
+    );
 
     const baseUrl = repoManager.getBaseUrl(ctx.repo);
     const url = `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`;
@@ -180,18 +208,25 @@ export class DeployService {
     return { port, url };
   }
 
-  private async allocatePort(ctx: DeployContext, serviceName: ServiceName): Promise<number> {
+  private async allocatePort(
+    ctx: DeployContext,
+    serviceName: ServiceName,
+  ): Promise<number> {
     try {
       const port = await portManager.allocate(ctx.deploymentId, serviceName);
       ctx.portAllocated = true;
       return port;
     } catch (error: unknown) {
-      throw new DeployError(ErrorCode.PORT_CONFLICT, `Failed to allocate port for service '${serviceName}'.`, {
-        logs: error instanceof Error ? error.message : String(error),
-        step: 2,
-        stage: DeployStage.INSTALL,
-        service: serviceName,
-      });
+      throw new DeployError(
+        ErrorCode.PORT_CONFLICT,
+        `Failed to allocate port for service '${serviceName}'.`,
+        {
+          logs: error instanceof Error ? error.message : String(error),
+          step: 2,
+          stage: DeployStage.INSTALL,
+          service: serviceName,
+        },
+      );
     }
   }
 
@@ -212,20 +247,31 @@ export class DeployService {
 
     try {
       ctx.startedProcess = await pm2Manager.start(
-        serviceName, ctx.deploymentId, port, command, servicePath, env,
+        serviceName,
+        ctx.deploymentId,
+        port,
+        command,
+        servicePath,
+        env,
       );
       await this.waitForPort(port, serviceName);
     } catch (error: unknown) {
-      throw new DeployError(ErrorCode.PROCESS_ERROR, `Failed to start process for service '${serviceName}'.`, {
-        logs: error instanceof Error ? error.message : String(error),
-        service: serviceName,
-        step: 4,
-        stage: DeployStage.PROCESS,
-      });
+      throw new DeployError(
+        ErrorCode.PROCESS_ERROR,
+        `Failed to start process for service '${serviceName}'.`,
+        {
+          logs: error instanceof Error ? error.message : String(error),
+          service: serviceName,
+          step: 4,
+          stage: DeployStage.PROCESS,
+        },
+      );
     }
   }
 
-  async listDeployments({ repo }: ListDeploymentsQuery = {}): Promise<DeploymentResponse[]> {
+  async listDeployments({ repo }: ListDeploymentsQuery = {}): Promise<
+    DeploymentResponse[]
+  > {
     const repos = repo ? [repo] : repoManager.list().map((r) => r.name);
     const processes = await pm2Manager.list();
     const registry = portManager.getAll();
@@ -242,8 +288,12 @@ export class DeployService {
           branch,
           deploymentId,
           commit,
-          service: entry ? { [entry.serviceName]: { port: entry.port, url: entry.url } } : {},
-          process: processes.find((p) => matchesDeployment(p.name, deploymentId)) ?? null,
+          service: entry
+            ? { [entry.serviceName]: { port: entry.port, url: entry.url } }
+            : {},
+          process:
+            processes.find((p) => matchesDeployment(p.name, deploymentId)) ??
+            null,
         });
       }
     }
@@ -288,19 +338,21 @@ export class DeployService {
     port: number,
   ): Promise<void> {
     try {
-      await nginxManager.writeConfig(
-        ctx.deploymentId,
-        ctx.repo,
-        ctx.branch,
-        { service: serviceName, port },
-      );
+      await nginxManager.writeConfig(ctx.deploymentId, ctx.repo, ctx.branch, {
+        service: serviceName,
+        port,
+      });
       await nginxManager.reload();
     } catch (error: unknown) {
-      throw new DeployError(ErrorCode.NGINX_ERROR, "Failed to write or reload Nginx configuration.", {
-        logs: error instanceof Error ? error.message : String(error),
-        step: 5,
-        stage: DeployStage.NGINX,
-      });
+      throw new DeployError(
+        ErrorCode.NGINX_ERROR,
+        "Failed to write or reload Nginx configuration.",
+        {
+          logs: error instanceof Error ? error.message : String(error),
+          step: 5,
+          stage: DeployStage.NGINX,
+        },
+      );
     }
   }
 
@@ -329,19 +381,29 @@ export class DeployService {
         request.repo,
       );
     } catch (error: unknown) {
-      throw new DeployError(ErrorCode.GIT_ERROR, "Failed to setup deployment worktree.", {
-        logs: error instanceof Error ? error.message : String(error),
-        step: 1,
-        stage: DeployStage.WORKTREE,
-      });
+      throw new DeployError(
+        ErrorCode.GIT_ERROR,
+        "Failed to setup deployment worktree.",
+        {
+          logs: error instanceof Error ? error.message : String(error),
+          step: 1,
+          stage: DeployStage.WORKTREE,
+        },
+      );
     }
   }
 
-  private async waitForPort(port: number, service: string, timeoutMs = 60000): Promise<void> {
+  private async waitForPort(
+    port: number,
+    service: string,
+    timeoutMs = 60000,
+  ): Promise<void> {
     await pollUntil(
       async () => {
         try {
-          await fetch(`http://127.0.0.1:${port}`, { signal: AbortSignal.timeout(1000) });
+          await fetch(`http://127.0.0.1:${port}`, {
+            signal: AbortSignal.timeout(1000),
+          });
           return true;
         } catch {
           return false;
@@ -369,12 +431,16 @@ export class DeployService {
         result.stdout,
         result.stderr,
       );
-      throw new DeployError(errorCode, `${stage} command failed for service '${service}' (exit code ${result.exitCode}).`, {
-        logs,
-        step,
-        stage,
-        service,
-      });
+      throw new DeployError(
+        errorCode,
+        `${stage} command failed for service '${service}' (exit code ${result.exitCode}).`,
+        {
+          logs,
+          step,
+          stage,
+          service,
+        },
+      );
     }
   }
 }

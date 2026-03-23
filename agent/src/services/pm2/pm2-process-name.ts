@@ -21,12 +21,19 @@ export function buildProcessName(
   return `${service}-${deploymentId}-${port}`;
 }
 
-export function matchesProcess(processName: string, service: string, deploymentId: string): boolean {
+export function matchesProcess(
+  processName: string,
+  service: string,
+  deploymentId: string,
+): boolean {
   const pattern = `^${escapeRegex(service)}-${escapeRegex(deploymentId)}-\\d+$`;
   return getCachedRegex(pattern).test(processName);
 }
 
-export function matchesDeployment(processName: string, deploymentId: string): boolean {
+export function matchesDeployment(
+  processName: string,
+  deploymentId: string,
+): boolean {
   const pattern = `-${escapeRegex(deploymentId)}-\\d+$`;
   return getCachedRegex(pattern).test(processName);
 }

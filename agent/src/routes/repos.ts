@@ -6,14 +6,12 @@ import { toApiError } from "../utils/api-error";
 import type { RepoResponse } from "../types";
 
 export const repoRoutes = new Elysia()
-  .get(
-    "/repos",
-    (): RepoResponse[] =>
-      repoManager.list().map((r) => ({
-        name: r.name,
-        createdAt: r.createdAt,
-        pushUrl: repoManager.getPushUrl(r.name),
-      })),
+  .get("/repos", (): RepoResponse[] =>
+    repoManager.list().map((r) => ({
+      name: r.name,
+      createdAt: r.createdAt,
+      pushUrl: repoManager.getPushUrl(r.name),
+    })),
   )
 
   .post(

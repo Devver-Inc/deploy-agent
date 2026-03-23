@@ -32,7 +32,10 @@ export class PortManager {
     return ports;
   }
 
-  async allocate(deploymentId: string, serviceName: ServiceName): Promise<number> {
+  async allocate(
+    deploymentId: string,
+    serviceName: ServiceName,
+  ): Promise<number> {
     return this.mutex.run(async () => {
       const existing = this.repository.get(deploymentId);
       if (existing) return existing.port;

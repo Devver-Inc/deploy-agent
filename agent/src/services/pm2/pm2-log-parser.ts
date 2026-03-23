@@ -1,6 +1,7 @@
 import { LogEntryLevel, type LogEntry } from "../../types";
 
-const ISO_TIMESTAMP_RE = /\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)\b/;
+const ISO_TIMESTAMP_RE =
+  /\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)\b/;
 const DATE_TIME_RE = /\b(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\b/;
 
 function extractTimestamp(line: string): string {

@@ -2,7 +2,11 @@ import { writeFileSync } from "fs";
 import { exec, execOrThrow } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
 import type { PM2Process, LogEntry } from "../types";
-import { buildProcessName, matchesProcess, matchesDeployment } from "./pm2/pm2-process-name";
+import {
+  buildProcessName,
+  matchesProcess,
+  matchesDeployment,
+} from "./pm2/pm2-process-name";
 import { parsePm2Logs } from "./pm2/pm2-log-parser";
 import { config } from "../config";
 import { pollUntil } from "../utils/poll-until";
@@ -63,7 +67,9 @@ export class PM2Manager {
       async () => {
         const proc = (await this.list()).find((p) => p.name === name);
         if (proc?.status === "errored") {
-          throw new Error(`Process ${name} failed:\n${await this.getLogs(name, 20)}`);
+          throw new Error(
+            `Process ${name} failed:\n${await this.getLogs(name, 20)}`,
+          );
         }
         return proc?.status === "online";
       },
@@ -135,7 +141,9 @@ export class PM2Manager {
     lines = 50,
   ): Promise<LogEntry[]> {
     const processes = await this.list();
-    const matching = processes.filter((p) => matchesDeployment(p.name, deploymentId));
+    const matching = processes.filter((p) =>
+      matchesDeployment(p.name, deploymentId),
+    );
 
     const logs: LogEntry[] = [];
     for (const proc of matching) {
