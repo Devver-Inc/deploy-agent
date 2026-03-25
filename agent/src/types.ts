@@ -52,7 +52,7 @@ export enum OverlayCommentPermission {
   EMAIL_REQUIRED = "email_required",
 }
 
-export interface AccessControl {
+export interface OverlayAccessControl {
   commentPermission: OverlayCommentPermission;
 }
 
@@ -61,7 +61,7 @@ export interface DeployRequest {
   branch: string;
   commit?: string;
   projectId?: string;
-  accessControl: AccessControl;
+  overlayAccessControl: OverlayAccessControl;
   service: Partial<Record<ServiceName, ServiceConfig>>;
   env?: Record<string, string>;
 }

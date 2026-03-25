@@ -1,5 +1,5 @@
 import { safeBranch } from "../../utils/branch";
-import type { AccessControl } from "../../types";
+import type { OverlayAccessControl } from "../../types";
 import type { ServiceRoute } from "../nginx-manager";
 
 const DEVVER_WIDGET_URL = process.env.DEVVER_WIDGET_URL ?? "";
@@ -12,14 +12,14 @@ export class NginxConfigBuilder {
   private buildWidgetSnippet(
     repo: string,
     branch: string,
-    accessControl?: AccessControl,
+    overlayAccessControl?: OverlayAccessControl,
     projectId?: string,
   ): string {
     const ctx = JSON.stringify({
       repo,
       branch,
       ...(projectId ? { projectId } : {}),
-      ...(accessControl ? { accessControl } : {}),
+      ...(overlayAccessControl ? { overlayAccessControl } : {}),
     });
     return `<script>window.__DEVVER__=${ctx}</script><script src="${DEVVER_WIDGET_URL}" defer></script></body>`;
   }
@@ -28,14 +28,14 @@ export class NginxConfigBuilder {
     repo: string,
     branch: string,
     { service, port }: ServiceRoute,
-    accessControl?: AccessControl,
+    overlayAccessControl?: OverlayAccessControl,
     projectId?: string,
   ): string {
     const prefix = this.buildUrlPrefix(repo, branch);
     const widgetSnippet = this.buildWidgetSnippet(
       repo,
       branch,
-      accessControl,
+      overlayAccessControl,
       projectId,
     );
     const urlSuffix = service !== "web" ? `/${service}` : "";
