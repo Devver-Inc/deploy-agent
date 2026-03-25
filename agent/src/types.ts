@@ -47,9 +47,9 @@ export interface CreateRepoRequest {
 
 export type ServiceName = "web" | "api";
 
-export interface AccessControl {
-  requireEmailAuth?: boolean;
-  restrictToTeamMembers?: boolean;
+export enum OverlayCommentPermission {
+  TEAM_ONLY = "team_only",
+  EMAIL_REQUIRED = "email_required",
 }
 
 export interface DeployRequest {
@@ -57,7 +57,7 @@ export interface DeployRequest {
   branch: string;
   commit?: string;
   projectId?: string;
-  accessControl?: AccessControl;
+  overlayCommentPermission: OverlayCommentPermission;
   service: Partial<Record<ServiceName, ServiceConfig>>;
   env?: Record<string, string>;
 }

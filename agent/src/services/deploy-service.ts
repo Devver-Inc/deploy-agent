@@ -45,7 +45,7 @@ export class DeployService {
       requestId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       commit: request.commit ?? "",
       projectId: request.projectId,
-      accessControl: request.accessControl,
+      overlayCommentPermission: request.overlayCommentPermission,
       isNewWorktree: false,
       portAllocated: false,
     };
@@ -340,10 +340,17 @@ export class DeployService {
     port: number,
   ): Promise<void> {
     try {
-      await nginxManager.writeConfig(ctx.deploymentId, ctx.repo, ctx.branch, {
-        service: serviceName,
-        port,
-      }, ctx.projectId, ctx.accessControl);
+      await nginxManager.writeConfig(
+        ctx.deploymentId,
+        ctx.repo,
+        ctx.branch,
+        {
+          service: serviceName,
+          port,
+        },
+        ctx.projectId,
+        ctx.overlayCommentPermission,
+      );
       await nginxManager.reload();
     } catch (error: unknown) {
       throw new DeployError(

@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { deployService } from "../services/deploy-service";
+import { OverlayCommentPermission } from "../types";
 import {
   BRANCH_PATTERN,
   COMMIT_PATTERN,
@@ -16,12 +17,7 @@ export const deploymentRoutes = new Elysia()
       branch: t.String({ minLength: 1, pattern: BRANCH_PATTERN }),
       commit: t.Optional(t.String({ pattern: COMMIT_PATTERN })),
       projectId: t.Optional(t.String({ minLength: 1 })),
-      accessControl: t.Optional(
-        t.Object({
-          requireEmailAuth: t.Optional(t.Boolean()),
-          restrictToTeamMembers: t.Optional(t.Boolean()),
-        }),
-      ),
+      overlayCommentPermission: t.Enum(OverlayCommentPermission),
       service: t.Partial(
         t.Object({
           web: t.Object({
