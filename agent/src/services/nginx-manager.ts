@@ -1,7 +1,7 @@
 import { exec, execOrThrow } from "../utils/exec";
 import { NginxConfigBuilder } from "./nginx/nginx-config-builder";
 import { NginxConfigRepository } from "./nginx/nginx-config-repository";
-import type { OverlayCommentPermission, NginxConfigSnapshot } from "../types";
+import type { AccessControl, NginxConfigSnapshot } from "../types";
 
 export interface ServiceRoute {
   service: string;
@@ -17,14 +17,14 @@ export class NginxManager {
     repo: string,
     branch: string,
     route: ServiceRoute,
-    overlayCommentPermission: OverlayCommentPermission,
     projectId?: string,
+    accessControl?: AccessControl,
   ): Promise<void> {
     const config = this.builder.build(
       repo,
       branch,
       route,
-      overlayCommentPermission,
+      accessControl,
       projectId,
     );
     this.repository.write(deploymentId, config);

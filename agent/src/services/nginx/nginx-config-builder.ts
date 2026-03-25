@@ -1,5 +1,5 @@
 import { safeBranch } from "../../utils/branch";
-import type { OverlayCommentPermission } from "../../types";
+import type { AccessControl } from "../../types";
 import type { ServiceRoute } from "../nginx-manager";
 
 const DEVVER_WIDGET_URL = process.env.DEVVER_WIDGET_URL ?? "";
@@ -12,14 +12,14 @@ export class NginxConfigBuilder {
   private buildWidgetSnippet(
     repo: string,
     branch: string,
-    overlayCommentPermission: OverlayCommentPermission,
+    accessControl?: AccessControl,
     projectId?: string,
   ): string {
     const ctx = JSON.stringify({
       repo,
       branch,
       ...(projectId ? { projectId } : {}),
-      ...(overlayCommentPermission ? { overlayCommentPermission } : {}),
+      ...(accessControl ? { accessControl } : {}),
     });
     return `<script>window.__DEVVER__=${ctx}</script><script src="${DEVVER_WIDGET_URL}" defer></script></body>`;
   }
@@ -28,14 +28,14 @@ export class NginxConfigBuilder {
     repo: string,
     branch: string,
     { service, port }: ServiceRoute,
-    overlayCommentPermission: OverlayCommentPermission,
+    accessControl?: AccessControl,
     projectId?: string,
   ): string {
     const prefix = this.buildUrlPrefix(repo, branch);
     const widgetSnippet = this.buildWidgetSnippet(
       repo,
       branch,
-      overlayCommentPermission,
+      accessControl,
       projectId,
     );
     const urlSuffix = service !== "web" ? `/${service}` : "";

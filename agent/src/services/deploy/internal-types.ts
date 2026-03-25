@@ -1,5 +1,5 @@
 import type {
-  OverlayCommentPermission,
+  AccessControl,
   DeployStage,
   ErrorCode,
   NginxConfigSnapshot,
@@ -34,7 +34,7 @@ export interface DeployContext {
   requestId: string;
   commit: string;
   projectId?: string;
-  overlayCommentPermission: OverlayCommentPermission;
+  accessControl: AccessControl;
   isNewWorktree: boolean;
   startedProcess?: string;
   portAllocated: boolean;
