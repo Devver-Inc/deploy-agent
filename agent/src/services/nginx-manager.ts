@@ -1,7 +1,7 @@
 import { exec, execOrThrow } from "../utils/exec";
 import { NginxConfigBuilder } from "./nginx/nginx-config-builder";
 import { NginxConfigRepository } from "./nginx/nginx-config-repository";
-import type { NginxConfigSnapshot } from "../types";
+import type { AccessControl, NginxConfigSnapshot } from "../types";
 
 export interface ServiceRoute {
   service: string;
@@ -17,8 +17,10 @@ export class NginxManager {
     repo: string,
     branch: string,
     route: ServiceRoute,
+    projectId?: string,
+    accessControl?: AccessControl,
   ): Promise<void> {
-    const config = this.builder.build(repo, branch, route);
+    const config = this.builder.build(repo, branch, route, projectId, accessControl);
     this.repository.write(deploymentId, config);
 
     const test = await this.testConfig();

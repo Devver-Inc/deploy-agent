@@ -1,4 +1,5 @@
 import type {
+  AccessControl,
   DeployStage,
   ErrorCode,
   NginxConfigSnapshot,
@@ -32,6 +33,8 @@ export interface DeployContext {
   deploymentId: string;
   requestId: string;
   commit: string;
+  projectId?: string;
+  accessControl?: AccessControl;
   isNewWorktree: boolean;
   startedProcess?: string;
   portAllocated: boolean;

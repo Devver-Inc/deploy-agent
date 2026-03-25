@@ -15,6 +15,13 @@ export const deploymentRoutes = new Elysia()
       repo: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
       branch: t.String({ minLength: 1, pattern: BRANCH_PATTERN }),
       commit: t.Optional(t.String({ pattern: COMMIT_PATTERN })),
+      projectId: t.Optional(t.String({ minLength: 1 })),
+      accessControl: t.Optional(
+        t.Object({
+          requireEmailAuth: t.Optional(t.Boolean()),
+          restrictToTeamMembers: t.Optional(t.Boolean()),
+        }),
+      ),
       service: t.Partial(
         t.Object({
           web: t.Object({

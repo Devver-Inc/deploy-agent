@@ -47,10 +47,17 @@ export interface CreateRepoRequest {
 
 export type ServiceName = "web" | "api";
 
+export interface AccessControl {
+  requireEmailAuth?: boolean;
+  restrictToTeamMembers?: boolean;
+}
+
 export interface DeployRequest {
   repo: string;
   branch: string;
   commit?: string;
+  projectId?: string;
+  accessControl?: AccessControl;
   service: Partial<Record<ServiceName, ServiceConfig>>;
   env?: Record<string, string>;
 }

@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
 
 jobs:
   build-and-push:
@@ -34,5 +36,6 @@ jobs:
           tags: |
             ghcr.io/devver-inc/deploy-agent:latest
             ghcr.io/devver-inc/deploy-agent:${{ github.sha }}
+            ghcr.io/devver-inc/deploy-agent:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

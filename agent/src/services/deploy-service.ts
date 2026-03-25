@@ -44,6 +44,8 @@ export class DeployService {
       deploymentId: gitManager.getDeploymentId(request.branch, request.repo),
       requestId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       commit: request.commit ?? "",
+      projectId: request.projectId,
+      accessControl: request.accessControl,
       isNewWorktree: false,
       portAllocated: false,
     };
@@ -341,7 +343,7 @@ export class DeployService {
       await nginxManager.writeConfig(ctx.deploymentId, ctx.repo, ctx.branch, {
         service: serviceName,
         port,
-      });
+      }, ctx.projectId, ctx.accessControl);
       await nginxManager.reload();
     } catch (error: unknown) {
       throw new DeployError(
