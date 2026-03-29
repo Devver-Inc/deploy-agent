@@ -11,14 +11,17 @@ export interface ExecResult {
 export async function exec(
   command: string,
   cwd?: string,
-  options?: { unsafe?: boolean },
+  options?: { unsafe?: boolean; env?: Record<string, string> },
 ): Promise<ExecResult> {
   try {
     if (!options?.unsafe) {
       assertSafeShellCommand(command);
     }
 
-    const result = await $`sh -c ${command}`.cwd(cwd ?? process.cwd()).quiet();
+    const shell = $`sh -c ${command}`.cwd(cwd ?? process.cwd()).quiet();
+    const result = await (options?.env
+      ? shell.env({ ...process.env, ...options.env })
+      : shell);
     return {
       success: result.exitCode === 0,
       stdout: result.stdout.toString(),

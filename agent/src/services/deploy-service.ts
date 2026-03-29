@@ -18,6 +18,7 @@ import { exec } from "../utils/exec";
 import { prepareSmartCommand, buildEnvVars } from "../utils/deploy-helpers";
 import { safeBranch } from "../utils/branch";
 import { join } from "path";
+import { writeFileSync } from "fs";
 import { DeployError } from "../utils/deploy-error";
 import { pollUntil } from "../utils/poll-until";
 import { DeploymentLock } from "./deploy/deployment-lock";
@@ -173,6 +174,13 @@ export class DeployService {
       : worktreePath;
 
     const port = await this.allocatePort(ctx, serviceName);
+
+    if (Object.keys(extraEnv).length > 0) {
+      const content = Object.entries(extraEnv)
+        .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+        .join("\n");
+      writeFileSync(join(servicePath, ".env"), content);
+    }
 
     if (!config.skipInstall) {
       await this.runCommand(
