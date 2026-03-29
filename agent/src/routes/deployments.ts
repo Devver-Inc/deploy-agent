@@ -17,6 +17,7 @@ export const deploymentRoutes = new Elysia()
       branch: t.String({ minLength: 1, pattern: BRANCH_PATTERN }),
       commit: t.Optional(t.String({ pattern: COMMIT_PATTERN })),
       projectId: t.Optional(t.String({ minLength: 1 })),
+      organizationId: t.Optional(t.String({ minLength: 1 })),
       overlayAccessControl: t.Object({
         commentPermission: t.Enum(OverlayCommentPermission),
       }),

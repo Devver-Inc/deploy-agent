@@ -34,6 +34,7 @@ export interface DeployContext {
   requestId: string;
   commit: string;
   projectId?: string;
+  organizationId?: string;
   overlayAccessControl: OverlayAccessControl;
   isNewWorktree: boolean;
   startedProcess?: string;

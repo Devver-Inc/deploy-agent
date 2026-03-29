@@ -45,6 +45,7 @@ export class DeployService {
       requestId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       commit: request.commit ?? "",
       projectId: request.projectId,
+      organizationId: request.organizationId,
       overlayAccessControl: request.overlayAccessControl,
       isNewWorktree: false,
       portAllocated: false,
@@ -349,6 +350,7 @@ export class DeployService {
           port,
         },
         ctx.projectId,
+        ctx.organizationId,
         ctx.overlayAccessControl,
       );
       await nginxManager.reload();

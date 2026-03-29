@@ -18,6 +18,7 @@ export class NginxManager {
     branch: string,
     route: ServiceRoute,
     projectId?: string,
+    organizationId?: string,
     overlayAccessControl?: OverlayAccessControl,
   ): Promise<void> {
     const config = this.builder.build(
@@ -26,6 +27,7 @@ export class NginxManager {
       route,
       overlayAccessControl,
       projectId,
+      organizationId,
     );
     this.repository.write(deploymentId, config);
 

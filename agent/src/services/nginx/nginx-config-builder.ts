@@ -14,11 +14,13 @@ export class NginxConfigBuilder {
     branch: string,
     overlayAccessControl?: OverlayAccessControl,
     projectId?: string,
+    organizationId?: string,
   ): string {
     const ctx = JSON.stringify({
       repo,
       branch,
       ...(projectId ? { projectId } : {}),
+      ...(organizationId ? { organizationId } : {}),
       ...(overlayAccessControl ? { overlayAccessControl } : {}),
     });
     return `<script>window.__DEVVER__=${ctx}</script><script src="${DEVVER_WIDGET_URL}" defer></script></body>`;
@@ -30,6 +32,7 @@ export class NginxConfigBuilder {
     { service, port }: ServiceRoute,
     overlayAccessControl?: OverlayAccessControl,
     projectId?: string,
+    organizationId?: string,
   ): string {
     const prefix = this.buildUrlPrefix(repo, branch);
     const widgetSnippet = this.buildWidgetSnippet(
@@ -37,6 +40,7 @@ export class NginxConfigBuilder {
       branch,
       overlayAccessControl,
       projectId,
+      organizationId,
     );
     const urlSuffix = service !== "web" ? `/${service}` : "";
     const locationPath = `${prefix}${urlSuffix}`;

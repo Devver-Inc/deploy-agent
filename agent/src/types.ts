@@ -61,6 +61,7 @@ export interface DeployRequest {
   branch: string;
   commit?: string;
   projectId?: string;
+  organizationId?: string;
   overlayAccessControl: OverlayAccessControl;
   service: Partial<Record<ServiceName, ServiceConfig>>;
   env?: Record<string, string>;
