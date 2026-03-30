@@ -30,7 +30,7 @@ export class GitWorktreeOperations {
     const latestCommit =
       commit ?? (await execOrThrow(`git rev-parse ${branch}`, repoPath)).trim();
     await execOrThrow(`git reset --hard ${latestCommit}`, worktreePath);
-    await execOrThrow("git clean -fd", worktreePath);
+    await execOrThrow("git clean -fdx --exclude=node_modules", worktreePath);
   }
 
   async removeWorktree(repoPath: string, worktreePath: string): Promise<void> {

@@ -29,6 +29,15 @@ export class PM2Manager {
     );
     await Promise.all(existing.map((p) => this.delete(p.name)));
 
+    const stillExisting = (await this.list()).filter((p) =>
+      matchesProcess(p.name, service, branch),
+    );
+    if (stillExisting.length > 0) {
+      throw new Error(
+        `Failed to delete existing processes before redeploy: ${stillExisting.map((p) => p.name).join(", ")}`,
+      );
+    }
+
     const envVars = { ...env, PORT: port.toString(), HOST: "0.0.0.0" };
     ensureDir(config.paths.pm2Data);
     const ecosystemFile = `${config.paths.pm2Data}/${name}.config.js`;
@@ -96,7 +105,7 @@ export class PM2Manager {
   }
 
   async delete(name: string): Promise<void> {
-    await exec(`pm2 delete ${name}`);
+    await execOrThrow(`pm2 delete ${name}`);
     await exec("pm2 save");
   }
 

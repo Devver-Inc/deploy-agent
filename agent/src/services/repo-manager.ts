@@ -1,9 +1,8 @@
-import { existsSync, writeFileSync } from "fs";
+import { existsSync } from "fs";
 import { rm } from "fs/promises";
 import { execOrThrow } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
 import { isValidRepoName } from "../utils/validation";
-import { buildPostReceiveHook } from "./repo/repo-hook-template";
 import { assertRepoPathWithinBase } from "./repo/repo-path-guard";
 import { JsonRepoRepository } from "./repo/json-repo-repository";
 import type { RepoConfig, RepoRepository } from "./repo/repo-repository";
@@ -41,8 +40,6 @@ export class RepoManager {
       `git config --global --add safe.directory '${config.paths.deployments}/${name}/*'`,
     );
 
-    writeFileSync(`${repoPath}/hooks/post-receive`, buildPostReceiveHook(name));
-    await execOrThrow(`chmod +x ${repoPath}/hooks/post-receive`, repoPath);
     await execOrThrow(`chown -R git:git ${repoPath}`);
 
     this.repository.set(name, {
