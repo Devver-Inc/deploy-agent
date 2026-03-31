@@ -324,8 +324,12 @@ export class DeployService {
 
   async removeDeployment(deploymentId: string): Promise<void> {
     const location = await this.findDeploymentLocation(deploymentId);
+    const portEntry = portManager.getAll()[deploymentId];
+    await pm2Manager.deleteByBranch(deploymentId);
+    if (portEntry) {
+      await pm2Manager.killPort(portEntry.port);
+    }
     await Promise.all([
-      pm2Manager.deleteByBranch(deploymentId),
       location
         ? gitManager.removeWorktree(location.branch, location.repo)
         : Promise.resolve(),

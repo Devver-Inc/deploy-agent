@@ -1,4 +1,5 @@
 import { writeFileSync } from "fs";
+import { createServer } from "net";
 import { exec, execOrThrow } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
 import type { PM2Process, LogEntry } from "../types";
@@ -38,6 +39,9 @@ export class PM2Manager {
       );
     }
 
+    await this.killPort(port);
+    await this.waitForPortFree(port);
+
     const envVars = { ...env, PORT: port.toString(), HOST: "0.0.0.0" };
     ensureDir(config.paths.pm2Data);
     const ecosystemFile = `${config.paths.pm2Data}/${name}.config.js`;
@@ -55,6 +59,8 @@ export class PM2Manager {
     watch: false,
     autorestart: true,
     max_restarts: 5,
+    kill_timeout: 5000,
+    treekill: true,
   }]
 };`,
     );
@@ -105,7 +111,11 @@ export class PM2Manager {
   }
 
   async delete(name: string): Promise<void> {
+    const pid = await this.getProcessPid(name);
     await execOrThrow(`pm2 delete ${name}`);
+    if (pid && pid > 0) {
+      await this.killProcessTree(pid);
+    }
     await exec("pm2 save");
   }
 
@@ -118,6 +128,58 @@ export class PM2Manager {
 
   async reload(name: string): Promise<void> {
     await execOrThrow(`pm2 reload ${name} --update-env`);
+  }
+
+  private async getProcessPid(name: string): Promise<number | undefined> {
+    const result = await exec("pm2 jlist");
+    if (!result.success) return undefined;
+    try {
+      const processes = JSON.parse(result.stdout);
+      const proc = processes.find((p: any) => p.name === name);
+      return proc?.pid > 0 ? proc.pid : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async killProcessTree(pid: number): Promise<void> {
+    // Kill entire process group first, then direct PID as fallback
+    await exec(`kill -9 -${pid}`);
+    await exec(`kill -9 ${pid}`);
+  }
+
+  async killPort(port: number): Promise<void> {
+    // Try fuser first (works if psmisc is installed)
+    await exec(`fuser -k ${port}/tcp`);
+
+    // Fallback: use ss to find PIDs listening on the port (works on Alpine)
+    const result = await exec(`ss -tlnp 'sport = :${port}'`);
+    if (result.success) {
+      const pids = [...result.stdout.matchAll(/pid=(\d+)/g)].map((m) => m[1]);
+      for (const pid of new Set(pids)) {
+        await exec(`kill -9 ${pid}`);
+      }
+    }
+  }
+
+  private async waitForPortFree(
+    port: number,
+    timeoutMs = 10000,
+  ): Promise<void> {
+    await pollUntil(
+      async () =>
+        new Promise<boolean>((resolve) => {
+          const server = createServer();
+          server.once("error", () => resolve(false));
+          server.once("listening", () => {
+            server.close();
+            resolve(true);
+          });
+          server.listen(port, "127.0.0.1");
+        }),
+      timeoutMs,
+      `Port ${port} was not freed within ${timeoutMs}ms`,
+    );
   }
 
   async processExists(name: string): Promise<boolean> {
