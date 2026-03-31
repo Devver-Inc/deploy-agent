@@ -37,10 +37,3 @@ export function matchesDeployment(
   const pattern = `-${escapeRegex(deploymentId)}-\\d+$`;
   return getCachedRegex(pattern).test(processName);
 }
-
-export function extractPortFromProcessName(
-  processName: string,
-): number | undefined {
-  const match = processName.match(/-(\d+)$/);
-  return match ? parseInt(match[1], 10) : undefined;
-}

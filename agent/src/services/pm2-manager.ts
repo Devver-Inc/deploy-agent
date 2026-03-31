@@ -7,7 +7,6 @@ import {
   buildProcessName,
   matchesProcess,
   matchesDeployment,
-  extractPortFromProcessName,
 } from "./pm2/pm2-process-name";
 import { parsePm2Logs } from "./pm2/pm2-log-parser";
 import { config } from "../config";
@@ -124,32 +123,6 @@ export class PM2Manager {
     const processes = await this.list();
     for (const proc of processes) {
       if (matchesDeployment(proc.name, branch)) await this.delete(proc.name);
-    }
-  }
-
-  async deleteDeployment(
-    deploymentId: string,
-    knownPort?: number,
-  ): Promise<void> {
-    const processes = await this.list();
-    const matching = processes.filter((p) =>
-      matchesDeployment(p.name, deploymentId),
-    );
-
-    const portsToKill = new Set<number>();
-    if (knownPort) portsToKill.add(knownPort);
-    for (const proc of matching) {
-      const port = extractPortFromProcessName(proc.name);
-      if (port) portsToKill.add(port);
-    }
-
-    for (const proc of matching) {
-      await this.delete(proc.name);
-    }
-
-    for (const port of portsToKill) {
-      await this.killPort(port);
-      await this.waitForPortFree(port).catch(() => {});
     }
   }
 
