@@ -15,7 +15,7 @@ import { pm2Manager, matchesDeployment } from "./pm2-manager";
 import { nginxManager } from "./nginx-manager";
 import { repoManager } from "./repo-manager";
 import { exec } from "../utils/exec";
-import { prepareSmartCommand, buildEnvVars } from "../utils/deploy-helpers";
+import { buildEnvVars } from "../utils/deploy-helpers";
 import { safeBranch } from "../utils/branch";
 import { join } from "path";
 import { writeFileSync } from "fs";
@@ -249,7 +249,7 @@ export class DeployService {
     servicePath: string,
     extraEnv: Record<string, string>,
   ): Promise<void> {
-    const command = prepareSmartCommand(config.start || "bun run start", port);
+    const command = config.start || "bun run start";
     const env = {
       ...buildEnvVars(extraEnv),
       PORT: port.toString(),
