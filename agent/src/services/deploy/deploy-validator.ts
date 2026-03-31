@@ -28,7 +28,7 @@ export class DeployValidator {
     const [serviceName, config] = entries[0]!;
     try {
       assertSafeShellCommand(config.install || "bun install");
-      assertSafeShellCommand(config.build);
+      if (config.build) assertSafeShellCommand(config.build);
       assertSafeShellCommand(config.start);
     } catch (error: any) {
       throw this.validationFailure(

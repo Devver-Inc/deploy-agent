@@ -36,7 +36,7 @@ export interface ServiceConfig {
   root?: string;
   install?: string;
   skipInstall?: boolean;
-  build: string;
+  build?: string;
   start: string;
 }
 
