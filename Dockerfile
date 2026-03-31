@@ -9,7 +9,8 @@ RUN apk add --no-cache \
     nodejs \
     npm \
     curl \
-    bash
+    bash \
+    psmisc
 
 RUN npm install -g pm2
 

@@ -7,6 +7,7 @@ import {
   buildProcessName,
   matchesProcess,
   matchesDeployment,
+  extractPortFromProcessName,
 } from "./pm2/pm2-process-name";
 import { parsePm2Logs } from "./pm2/pm2-log-parser";
 import { config } from "../config";
@@ -126,6 +127,32 @@ export class PM2Manager {
     }
   }
 
+  async deleteDeployment(
+    deploymentId: string,
+    knownPort?: number,
+  ): Promise<void> {
+    const processes = await this.list();
+    const matching = processes.filter((p) =>
+      matchesDeployment(p.name, deploymentId),
+    );
+
+    const portsToKill = new Set<number>();
+    if (knownPort) portsToKill.add(knownPort);
+    for (const proc of matching) {
+      const port = extractPortFromProcessName(proc.name);
+      if (port) portsToKill.add(port);
+    }
+
+    for (const proc of matching) {
+      await this.delete(proc.name);
+    }
+
+    for (const port of portsToKill) {
+      await this.killPort(port);
+      await this.waitForPortFree(port).catch(() => {});
+    }
+  }
+
   async reload(name: string): Promise<void> {
     await execOrThrow(`pm2 reload ${name} --update-env`);
   }
@@ -149,17 +176,7 @@ export class PM2Manager {
   }
 
   async killPort(port: number): Promise<void> {
-    // Try fuser first (works if psmisc is installed)
     await exec(`fuser -k ${port}/tcp`);
-
-    // Fallback: use ss to find PIDs listening on the port (works on Alpine)
-    const result = await exec(`ss -tlnp 'sport = :${port}'`);
-    if (result.success) {
-      const pids = [...result.stdout.matchAll(/pid=(\d+)/g)].map((m) => m[1]);
-      for (const pid of new Set(pids)) {
-        await exec(`kill -9 ${pid}`);
-      }
-    }
   }
 
   private async waitForPortFree(
