@@ -36,11 +36,11 @@ export class DeployErrorFactory {
   }
 
   buildErrorResponse(
-    code: ErrorCode,
+    code: string,
     message: string,
     logs?: string,
     step?: number,
-    stage?: DeployStage,
+    stage?: string,
     service?: string,
     rollback?: RollbackResult,
     duration?: number,
@@ -48,11 +48,11 @@ export class DeployErrorFactory {
     return {
       success: false,
       error: {
-        code,
+        code: code as ErrorCode,
         message,
         logs,
         step,
-        stage,
+        stage: stage as DeployStage | undefined,
         service,
         rollback,
       },

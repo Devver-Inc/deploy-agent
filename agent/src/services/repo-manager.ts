@@ -8,6 +8,7 @@ import { JsonRepoRepository } from "./repo/json-repo-repository";
 import type { RepoConfig, RepoRepository } from "./repo/repo-repository";
 import type { CreateRepoRequest } from "../types";
 import { config } from "../config";
+import { safeJoin, toSafeFilename, assertWithin } from "../utils/path-guard";
 
 export class RepoManager {
   constructor(private repository: RepoRepository = new JsonRepoRepository()) {
@@ -15,7 +16,8 @@ export class RepoManager {
   }
 
   getRepoPath(name: string): string {
-    return `${config.paths.repos}/${name}.git`;
+    const safeName = toSafeFilename(name);
+    return safeJoin(config.paths.repos, `${safeName}.git`);
   }
 
   exists(name: string): boolean {

@@ -1,7 +1,5 @@
 import type {
   OverlayAccessControl,
-  DeployStage,
-  ErrorCode,
   NginxConfigSnapshot,
   PortRegistryEntry,
 } from "../../types";
@@ -19,25 +17,13 @@ export interface RollbackResult {
 }
 
 export interface DeployFailure {
-  code: ErrorCode;
+  code: string;
   message: string;
   logs?: string;
   step?: number;
-  stage?: DeployStage;
+  stage?: string;
   service?: string;
 }
 
-export interface DeployContext {
-  repo: string;
-  branch: string;
-  deploymentId: string;
-  requestId: string;
-  commit: string;
-  projectId?: string;
-  organizationId?: string;
-  overlayAccessControl: OverlayAccessControl;
-  isNewWorktree: boolean;
-  startedProcess?: string;
-  portAllocated: boolean;
-  rollbackSnapshot?: RollbackSnapshot;
-}
+export { DeployContext, assertPhase, isPhase } from "./deploy-context";
+export type { DeployPhase } from "./deploy-context";

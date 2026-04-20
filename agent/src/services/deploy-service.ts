@@ -41,6 +41,7 @@ export class DeployService {
   ): Promise<DeployResponse | ErrorResponse> {
     const startTime = Date.now();
     const ctx: DeployContext = {
+      phase: "initial",
       repo: request.repo,
       branch: request.branch,
       deploymentId: gitManager.getDeploymentId(request.branch, request.repo),

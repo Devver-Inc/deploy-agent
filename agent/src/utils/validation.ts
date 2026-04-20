@@ -56,24 +56,3 @@ export function isValidCommit(commit: string): boolean {
 export function isValidPm2ProcessName(name: string): boolean {
   return PM2_PROCESS_REGEX.test(name);
 }
-
-export function assertSafeShellCommand(command: string): void {
-  const allowUnsafe = process.env.DEVVER_ALLOW_UNSAFE_COMMANDS === "true";
-  if (allowUnsafe) return;
-
-  const blockedPatterns = [
-    /&&/,
-    /\|\|/,
-    /(?<!\|)\|(?!\|)/,
-    /;/,
-    /`/,
-    /\$\(/,
-    /[<>]/,
-    /\r|\n/,
-  ];
-  if (blockedPatterns.some((pattern) => pattern.test(command))) {
-    throw new Error(
-      "Command contains potentially unsafe shell tokens. Set DEVVER_ALLOW_UNSAFE_COMMANDS=true to bypass.",
-    );
-  }
-}

@@ -1,10 +1,6 @@
 import { DeployStage, ErrorCode, type DeployRequest } from "../../types";
-import {
-  assertSafeShellCommand,
-  isValidBranch,
-  isValidCommit,
-  isValidRepoName,
-} from "../../utils/validation";
+import { isValidBranch, isValidCommit, isValidRepoName } from "../../utils/validation";
+import { parseCommand } from "../../utils/command-parser";
 import type { DeployFailure } from "./internal-types";
 
 export class DeployValidator {
@@ -27,13 +23,14 @@ export class DeployValidator {
     }
     const [serviceName, config] = entries[0]!;
     try {
-      assertSafeShellCommand(config.install || "bun install");
-      if (config.build) assertSafeShellCommand(config.build);
-      assertSafeShellCommand(config.start);
-    } catch (error: any) {
+      parseCommand(config.install || "bun install");
+      if (config.build) parseCommand(config.build);
+      parseCommand(config.start);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       throw this.validationFailure(
         `Unsafe command detected in service '${serviceName}'.`,
-        error?.message,
+        err.message,
         serviceName,
       );
     }
@@ -46,12 +43,13 @@ export class DeployValidator {
     stage: DeployStage,
   ): void {
     try {
-      assertSafeShellCommand(command);
-    } catch (error: any) {
+      parseCommand(command);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       const failure: DeployFailure = {
         code: ErrorCode.VALIDATION_ERROR,
         message: `Unsafe command detected for service '${service}'.`,
-        logs: error?.message,
+        logs: err.message,
         step,
         stage,
         service,

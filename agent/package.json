@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
-    "elysia": "^1.0.0"
+    "elysia": "^1.0.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^25.1.0",
