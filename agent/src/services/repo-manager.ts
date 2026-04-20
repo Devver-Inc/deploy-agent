@@ -31,16 +31,14 @@ export class RepoManager {
     if (existsSync(repoPath)) throw new Error(`Repo '${name}' already exists`);
 
     ensureDir(repoPath);
-    await execOrThrow("git init --bare", repoPath);
-    await execOrThrow(`git config receive.denyCurrentBranch ignore`, repoPath);
-    await execOrThrow(`git config receive.denyNonFastForwards false`, repoPath);
-    await execOrThrow(`git config http.receivepack true`, repoPath);
-    await execOrThrow(`git config --global --add safe.directory ${repoPath}`);
-    await execOrThrow(
-      `git config --global --add safe.directory '${config.paths.deployments}/${name}/*'`,
-    );
+    await execOrThrow("git", ["init", "--bare"], repoPath);
+    await execOrThrow("git", ["config", "receive.denyCurrentBranch", "ignore"], repoPath);
+    await execOrThrow("git", ["config", "receive.denyNonFastForwards", "false"], repoPath);
+    await execOrThrow("git", ["config", "http.receivepack", "true"], repoPath);
+    await execOrThrow("git", ["config", "--global", "--add", "safe.directory", repoPath]);
+    await execOrThrow("git", ["config", "--global", "--add", "safe.directory", `${config.paths.deployments}/${name}/*`]);
 
-    await execOrThrow(`chown -R git:git ${repoPath}`);
+    await execOrThrow("chown", ["-R", "git:git", repoPath]);
 
     this.repository.set(name, {
       name,

@@ -1,8 +1,26 @@
 import { safeBranch } from "../../utils/branch";
 import type { OverlayAccessControl } from "../../types";
 import type { ServiceRoute } from "../nginx-manager";
+import { DeployError } from "../../utils/errors";
 
 const DEVVER_WIDGET_URL = process.env.DEVVER_WIDGET_URL ?? "";
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "\\u0026")
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/"/g, "\\u0022")
+    .replace(/'/g, "\\u0027");
+}
+
+function validateWidgetUrl(url: string): void {
+  if (url && !url.startsWith("https://")) {
+    throw DeployError.validation("DEVVER_WIDGET_URL must use HTTPS", { url });
+  }
+}
+
+validateWidgetUrl(DEVVER_WIDGET_URL);
 
 export class NginxConfigBuilder {
   private buildUrlPrefix(repo: string, branch: string): string {
@@ -23,7 +41,8 @@ export class NginxConfigBuilder {
       ...(organizationId ? { organizationId } : {}),
       ...(overlayAccessControl ? { overlayAccessControl } : {}),
     });
-    return `<script>window.__DEVVER__=${ctx}</script><script src="${DEVVER_WIDGET_URL}" defer></script></body>`;
+    const escapedCtx = escapeHtml(ctx);
+    return `<script>window.__DEVVER__=${escapedCtx}</script><script src="${DEVVER_WIDGET_URL}" defer></script></body>`;
   }
 
   build(

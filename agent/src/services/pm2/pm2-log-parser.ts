@@ -12,20 +12,14 @@ function extractTimestamp(line: string): string {
   return new Date().toISOString();
 }
 
-export function parsePm2Logs(
-  deploymentId: string,
-  processName: string,
-  raw: string,
-): LogEntry[] {
-  const service = processName.split(`-${deploymentId}-`)[0];
-
+export function parsePm2Logs(raw: string, serviceName = "unknown"): LogEntry[] {
   return raw
     .split("\n")
     .filter(Boolean)
     .map((line) => {
       const lower = line.toLowerCase();
       return {
-        service,
+        service: serviceName,
         level:
           lower.includes("error") ||
           lower.includes("exception") ||

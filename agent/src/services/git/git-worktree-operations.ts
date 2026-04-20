@@ -15,10 +15,8 @@ export class GitWorktreeOperations {
     commit?: string,
   ): Promise<void> {
     ensureDir(deploymentsPath);
-    await execOrThrow(
-      `git worktree add "${worktreePath}" ${commit ?? branch}`,
-      repoPath,
-    );
+    const ref = commit ?? branch;
+    await execOrThrow("git", ["worktree", "add", worktreePath, ref], repoPath);
   }
 
   async updateWorktree(
@@ -27,28 +25,22 @@ export class GitWorktreeOperations {
     branch: string,
     commit?: string,
   ): Promise<void> {
-    await execOrThrow(
-      `git fetch "${repoPath}" ${branch}`,
-      worktreePath,
-    );
-    const latestCommit = commit ?? (await execOrThrow(`git rev-parse FETCH_HEAD`, worktreePath)).trim();
-    await execOrThrow(`git reset --hard ${latestCommit}`, worktreePath);
-    await execOrThrow("git clean -fdx --exclude=node_modules", worktreePath);
+    await execOrThrow("git", ["fetch", repoPath, branch], worktreePath);
+    const latestCommit = commit ?? (await execOrThrow("git", ["rev-parse", "FETCH_HEAD"], worktreePath)).trim();
+    await execOrThrow("git", ["reset", "--hard", latestCommit], worktreePath);
+    await execOrThrow("git", ["clean", "-fdx", "--exclude=node_modules"], worktreePath);
   }
 
   async removeWorktree(repoPath: string, worktreePath: string): Promise<void> {
     if (!existsSync(worktreePath)) return;
-    await execOrThrow(
-      `git worktree remove "${worktreePath}" --force`,
-      repoPath,
-    );
+    await execOrThrow("git", ["worktree", "remove", worktreePath, "--force"], repoPath);
   }
 
   async listWorktrees(
     repoPath: string,
     deploymentsPath: string,
   ): Promise<string[]> {
-    const result = await exec("git worktree list --porcelain", repoPath);
+    const result = await exec("git", ["worktree", "list", "--porcelain"], repoPath);
     if (!result.success) return [];
 
     const worktrees: string[] = [];
@@ -63,6 +55,6 @@ export class GitWorktreeOperations {
   }
 
   async getCurrentCommit(worktreePath: string): Promise<string> {
-    return (await execOrThrow("git rev-parse HEAD", worktreePath)).trim();
+    return (await execOrThrow("git", ["rev-parse", "HEAD"], worktreePath)).trim();
   }
 }

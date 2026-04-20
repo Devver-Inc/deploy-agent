@@ -36,7 +36,7 @@ export const repoRoutes = new Elysia()
     {
       body: t.Object({
         name: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
-        baseUrl: t.String(),
+        baseUrl: t.String({ format: "uri", pattern: "^https://" }),
       }),
     },
   )

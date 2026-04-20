@@ -1,5 +1,4 @@
-import { $ } from "bun";
-import { assertSafeShellCommand } from "./validation";
+import { DeployError } from "./errors";
 
 export interface ExecResult {
   success: boolean;
@@ -9,42 +8,67 @@ export interface ExecResult {
 }
 
 export async function exec(
-  command: string,
+  bin: string,
+  argv: readonly string[],
   cwd?: string,
-  options?: { unsafe?: boolean; env?: Record<string, string> },
+  env?: Record<string, string>,
 ): Promise<ExecResult> {
   try {
-    if (!options?.unsafe) {
-      assertSafeShellCommand(command);
+    const options: {
+      cwd?: string;
+      stdout?: "pipe";
+      stderr?: "pipe";
+      env: Record<string, string>;
+    } = {
+      cwd: cwd ?? process.cwd(),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: env ?? {},
+    };
+
+    if (env) {
+      options.env = { ...process.env as Record<string, string>, ...env };
     }
 
-    const shell = $`sh -c ${command}`.cwd(cwd ?? process.cwd()).quiet();
-    const result = await (options?.env
-      ? shell.env({ ...process.env, ...options.env })
-      : shell);
+    const child = Bun.spawn([bin, ...argv], options);
+    const [stdout, stderr] = await Promise.all([
+      child.stdout?.text() ?? "",
+      child.stderr?.text() ?? "",
+    ]);
+
+    const exitCode = await child.exited;
+
     return {
-      success: result.exitCode === 0,
-      stdout: result.stdout.toString(),
-      stderr: result.stderr.toString(),
-      exitCode: result.exitCode,
+      success: exitCode === 0,
+      stdout,
+      stderr,
+      exitCode,
     };
-  } catch (error: any) {
+  } catch (error) {
+    const err = DeployError.wrap(error);
     return {
       success: false,
-      stdout: error.stdout?.toString() ?? "",
-      stderr: error.stderr?.toString() ?? error.message,
-      exitCode: error.exitCode ?? 1,
+      stdout: "",
+      stderr: err.message,
+      exitCode: 1,
     };
   }
 }
 
 export async function execOrThrow(
-  command: string,
+  bin: string,
+  argv: readonly string[],
   cwd?: string,
-  options?: { unsafe?: boolean },
+  env?: Record<string, string>,
 ): Promise<string> {
-  const result = await exec(command, cwd, options);
-  if (!result.success)
-    throw new Error(`Command failed: ${command}\n${result.stderr}`);
+  const result = await exec(bin, argv, cwd, env);
+
+  if (!result.success) {
+    throw DeployError.commandFailed(
+      `Command failed: ${bin} ${argv.join(" ")}\n${result.stderr}`,
+      { context: { bin, argv: [...argv], cwd, exitCode: result.exitCode } }
+    );
+  }
+
   return result.stdout;
 }

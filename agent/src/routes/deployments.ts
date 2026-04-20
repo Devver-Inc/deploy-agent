@@ -6,9 +6,16 @@ import {
   COMMIT_PATTERN,
   PM2_PROCESS_PATTERN,
   REPO_NAME_PATTERN,
+  DEPLOYMENT_ID_PATTERN,
+  PROJECT_ID_PATTERN,
+  ORGANIZATION_ID_PATTERN,
+  ENV_KEY_PATTERN,
+  MAX_LENGTH,
 } from "../utils/validation";
 import { toApiError } from "../utils/api-error";
 import { pm2Manager } from "../services/pm2-manager";
+
+const MAX_LENGTH_512 = MAX_LENGTH;
 
 export const deploymentRoutes = new Elysia()
   .post("/deploy", async ({ body }) => deployService.deploy(body), {
@@ -16,30 +23,30 @@ export const deploymentRoutes = new Elysia()
       repo: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
       branch: t.String({ minLength: 1, pattern: BRANCH_PATTERN }),
       commit: t.Optional(t.String({ pattern: COMMIT_PATTERN })),
-      projectId: t.Optional(t.String({ minLength: 1 })),
-      organizationId: t.Optional(t.String({ minLength: 1 })),
+      projectId: t.Optional(t.String({ minLength: 1, pattern: PROJECT_ID_PATTERN })),
+      organizationId: t.Optional(t.String({ minLength: 1, pattern: ORGANIZATION_ID_PATTERN })),
       overlayAccessControl: t.Object({
         commentPermission: t.Enum(OverlayCommentPermission),
       }),
       service: t.Partial(
         t.Object({
           web: t.Object({
-            root: t.Optional(t.String()),
-            install: t.Optional(t.String()),
+            root: t.Optional(t.String({ maxLength: MAX_LENGTH_512 })),
+            install: t.Optional(t.String({ maxLength: MAX_LENGTH_512 })),
             skipInstall: t.Optional(t.Boolean()),
-            build: t.Optional(t.String()),
-            start: t.String(),
+            build: t.Optional(t.String({ maxLength: MAX_LENGTH_512 })),
+            start: t.String({ maxLength: MAX_LENGTH_512 }),
           }),
           api: t.Object({
-            root: t.Optional(t.String()),
-            install: t.Optional(t.String()),
+            root: t.Optional(t.String({ maxLength: MAX_LENGTH_512 })),
+            install: t.Optional(t.String({ maxLength: MAX_LENGTH_512 })),
             skipInstall: t.Optional(t.Boolean()),
-            build: t.Optional(t.String()),
-            start: t.String(),
+            build: t.Optional(t.String({ maxLength: MAX_LENGTH_512 })),
+            start: t.String({ maxLength: MAX_LENGTH_512 }),
           }),
         }),
       ),
-      env: t.Optional(t.Record(t.String(), t.String())),
+      env: t.Optional(t.Record(t.String({ pattern: ENV_KEY_PATTERN }), t.String())),
     }),
   })
 
@@ -71,7 +78,7 @@ export const deploymentRoutes = new Elysia()
     },
     {
       params: t.Object({
-        deploymentId: t.String({ minLength: 1 }),
+        deploymentId: t.String({ minLength: 1, pattern: DEPLOYMENT_ID_PATTERN }),
       }),
     },
   )

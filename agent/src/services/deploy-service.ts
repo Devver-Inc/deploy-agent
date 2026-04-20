@@ -14,11 +14,12 @@ import { portManager } from "./port-manager";
 import { pm2Manager, matchesDeployment } from "./pm2-manager";
 import { nginxManager } from "./nginx-manager";
 import { repoManager } from "./repo-manager";
-import { exec } from "../utils/exec";
-import { prepareSmartCommand, buildEnvVars } from "../utils/deploy-helpers";
+import { exec, execOrThrow } from "../utils/exec";
+import { parseCommand } from "../utils/command-parser";
+import { injectPort } from "./deploy/port-injection";
 import { safeBranch } from "../utils/branch";
 import { join } from "path";
-import { writeFileSync } from "fs";
+import { writeFile } from "fs/promises";
 import { DeployError } from "../utils/deploy-error";
 import { pollUntil } from "../utils/poll-until";
 import { DeploymentLock } from "./deploy/deployment-lock";
@@ -179,12 +180,13 @@ export class DeployService {
       const content = Object.entries(extraEnv)
         .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
         .join("\n");
-      writeFileSync(join(servicePath, ".env"), content);
+      await writeFile(join(servicePath, ".env"), content);
     }
 
     if (!config.skipInstall) {
-      await this.runCommand(
-        config.install || "bun install",
+      const installCmd = parseCommand(config.install || "bun install");
+      await this.runParsedCommand(
+        installCmd,
         servicePath,
         ErrorCode.INSTALL_ERROR,
         serviceName,
@@ -193,8 +195,9 @@ export class DeployService {
       );
     }
     if (config.build) {
-      await this.runCommand(
-        config.build,
+      const buildCmd = parseCommand(config.build);
+      await this.runParsedCommand(
+        buildCmd,
         servicePath,
         ErrorCode.BUILD_ERROR,
         serviceName,
@@ -249,23 +252,25 @@ export class DeployService {
     servicePath: string,
     extraEnv: Record<string, string>,
   ): Promise<void> {
-    const rawCommand = config.start || "bun run start";
-    const command =
-      serviceName === "web"
-        ? prepareSmartCommand(rawCommand, port)
-        : rawCommand;
-    const env = {
-      ...buildEnvVars(extraEnv),
-      PORT: port.toString(),
+    const startCmd = parseCommand(config.start || "bun run start");
+    const argvWithPort = serviceName === "web"
+      ? injectPort(startCmd.argv, port, startCmd.bin)
+      : startCmd.argv;
+
+    const env: Record<string, string> = {
+      NODE_ENV: "production",
+      ...extraEnv,
+      PORT: String(port),
       HOST: "0.0.0.0",
     };
 
     try {
       ctx.startedProcess = await pm2Manager.start(
         serviceName,
-        ctx.deploymentId,
+        ctx.branch,
         port,
-        command,
+        startCmd.bin,
+        argvWithPort,
         servicePath,
         env,
       );
@@ -449,12 +454,24 @@ export class DeployService {
     step: number,
     stage: DeployStage,
   ): Promise<void> {
-    this.validator.validateRuntimeCommand(command, service, step, stage);
+    const parsed = parseCommand(command);
+    await this.runParsedCommand(parsed, cwd, errorCode, service, step, stage);
+  }
 
-    const result = await exec(command, cwd);
+  private async runParsedCommand(
+    parsed: { bin: string; argv: readonly string[] },
+    cwd: string,
+    errorCode: ErrorCode,
+    service: string,
+    step: number,
+    stage: DeployStage,
+  ): Promise<void> {
+    const fullArgv = [parsed.bin, ...parsed.argv];
+    const result = await exec(parsed.bin, parsed.argv, cwd);
+
     if (!result.success) {
       const logs = this.errors.formatCommandLogs(
-        command,
+        fullArgv.join(" "),
         result.stdout,
         result.stderr,
       );

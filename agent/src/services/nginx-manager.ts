@@ -53,12 +53,12 @@ export class NginxManager {
   }
 
   async testConfig(): Promise<{ success: boolean; logs: string }> {
-    const result = await exec("nginx -t");
+    const result = await exec("nginx", ["-t"]);
     return { success: result.success, logs: result.stderr || result.stdout };
   }
 
   async reload(): Promise<void> {
-    await execOrThrow("nginx -s reload");
+    await execOrThrow("nginx", ["-s", "reload"]);
   }
 }
 
