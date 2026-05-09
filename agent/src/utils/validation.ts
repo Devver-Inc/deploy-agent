@@ -27,9 +27,6 @@ export function isValidPm2ProcessName(name: string): boolean {
 }
 
 export function assertSafeShellCommand(command: string): void {
-  const allowUnsafe = process.env.DEVVER_ALLOW_UNSAFE_COMMANDS === "true";
-  if (allowUnsafe) return;
-
   const blockedPatterns = [
     /&&/,
     /\|\|/,

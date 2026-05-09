@@ -1,13 +1,11 @@
-const BASE_DIR = process.env.DEVVER_DATA_DIR ?? "/app";
-
 export const config = {
   paths: {
-    deployments: `${BASE_DIR}/deployments`,
-    repos: `${BASE_DIR}/repos`,
-    pm2Data: `${BASE_DIR}/data/pm2`,
-    portsFile: `${BASE_DIR}/data/ports.json`,
-    reposFile: `${BASE_DIR}/data/repos.json`,
-    nginxConfDir: `${BASE_DIR}/nginx/conf.d`,
+    deployments: "/app/deployments",
+    repos: "/app/repos",
+    pm2Data: "/app/data/pm2",
+    portsFile: "/app/data/ports.json",
+    reposFile: "/app/data/repos.json",
+    nginxConfDir: "/app/nginx/conf.d",
   },
   mongo: {
     connectionString: process.env.DEVVER_MONGO_CONNECTION_STRING,
