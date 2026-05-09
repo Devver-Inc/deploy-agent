@@ -47,6 +47,7 @@ bun run dev   # watch mode
 | `DEVVER_SECRET`     | **Yes**  | —            | API authentication secret (`x-devver-secret` header) |
 | `DEVVER_DATA_DIR`   | No       | `/app`       | Base directory for repos, deployments and data       |
 | `DEVVER_WIDGET_URL` | No       | CDN jsdelivr | Devver overlay script URL                            |
+| `DEVVER_MONGO_CONNECTION_STRING` | Mongo routes: **Yes** | — | Full Mongo connection string used by `/mongo/databases` |
 | `NODE_ENV`          | No       | —            | `production` for deploys                             |
 | `PORT`              | No       | `8080`       | Deploy Agent port                                    |
 
@@ -95,6 +96,7 @@ GET /health
 | `POST`   | `/deploy`                    | Run a deployment            |
 | `GET`    | `/deployments`               | List deployments (`?repo=`) |
 | `DELETE` | `/deployments/:deploymentId` | Remove a deployment         |
+| `GET`    | `/mongo/databases`           | List Mongo databases        |
 
 **POST /deploy** body:
 
@@ -139,6 +141,30 @@ Body: `{ "name": "pm2-process" }`
 
 ```
 GET /logs/:deploymentId
+```
+
+### Mongo
+
+```
+GET /mongo/databases
+```
+
+Returns:
+
+```json
+[
+  {
+    "name": "app-db",
+    "sizeOnDisk": 24576,
+    "empty": false
+  }
+]
+```
+
+The agent uses `DEVVER_MONGO_CONNECTION_STRING` directly. A typical value is:
+
+```txt
+mongodb://root:senha@test-overlay-test-db-mongo:27017/admin?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
 ```
 
 ## Deploy Pipeline

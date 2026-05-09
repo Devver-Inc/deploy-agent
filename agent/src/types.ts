@@ -138,6 +138,12 @@ export interface LogsResponse {
   logs: LogEntry[];
 }
 
+export interface MongoDatabaseInfo {
+  name: string;
+  sizeOnDisk: number;
+  empty: boolean;
+}
+
 export interface PortRegistryEntry {
   serviceName: ServiceName;
   port: number;

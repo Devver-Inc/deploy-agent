@@ -9,4 +9,7 @@ export const config = {
     reposFile: `${BASE_DIR}/data/repos.json`,
     nginxConfDir: `${BASE_DIR}/nginx/conf.d`,
   },
+  mongo: {
+    connectionString: process.env.DEVVER_MONGO_CONNECTION_STRING,
+  },
 } as const;
