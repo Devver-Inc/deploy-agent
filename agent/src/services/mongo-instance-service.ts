@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "fs";
 import { MongoClient, MongoServerError } from "mongodb";
 import { config } from "../config";
 import { ApiError } from "../utils/api-error";
@@ -6,28 +5,11 @@ import type { MongoDatabaseInfo } from "../types";
 
 const INTERNAL_DATABASES = new Set(["admin", "config", "local"]);
 
-interface ListMongoDatabasesInput {
-  orgSlug: string;
-  projectSlug: string;
-}
-
 export class MongoInstanceService {
-  async listDatabases({
-    orgSlug,
-    projectSlug,
-  }: ListMongoDatabasesInput): Promise<MongoDatabaseInfo[]> {
-    const host = this.buildHost(orgSlug, projectSlug);
+  async listDatabases(): Promise<MongoDatabaseInfo[]> {
     const connectionString = this.resolveConnectionString();
-    const caFile = this.resolveCaFile();
-
     const client = new MongoClient(connectionString, {
-      authSource: "admin",
       serverSelectionTimeoutMS: 10000,
-      tls: true,
-      ...(caFile ? { tlsCAFile: caFile } : {}),
-      ...(!caFile && config.mongo.tlsAllowInvalidCertificates
-        ? { tlsAllowInvalidCertificates: true }
-        : {}),
     });
 
     try {
@@ -44,8 +26,8 @@ export class MongoInstanceService {
       const details = error instanceof Error ? error.message : String(error);
       const message =
         error instanceof MongoServerError
-          ? `Mongo instance rejected the request for '${host}'.`
-          : `Mongo instance for '${host}' is unreachable.`;
+          ? "Mongo instance rejected the request."
+          : "Mongo instance is unreachable.";
       throw new ApiError(
         "MONGO_INSTANCE_UNREACHABLE",
         502,
@@ -57,16 +39,7 @@ export class MongoInstanceService {
     }
   }
 
-  private buildHost(orgSlug: string, projectSlug: string): string {
-    return `${orgSlug}-${projectSlug}-mongo:${config.mongo.port}`;
-  }
-
   private resolveConnectionString(): string {
-    const fileValue = this.resolveFileValue(config.mongo.connectionStringFile);
-    if (fileValue) {
-      return fileValue;
-    }
-
     if (config.mongo.connectionString?.trim()) {
       return config.mongo.connectionString.trim();
     }
@@ -75,21 +48,8 @@ export class MongoInstanceService {
       "MONGO_CONFIGURATION_ERROR",
       500,
       "Mongo connection string is not configured.",
-      "Set DEVVER_MONGO_CONNECTION_STRING_FILE in the pod or DEVVER_MONGO_CONNECTION_STRING for local development.",
+      "Set DEVVER_MONGO_CONNECTION_STRING in the deploy-agent pod.",
     );
-  }
-
-  private resolveCaFile(): string | undefined {
-    return existsSync(config.mongo.caFile) ? config.mongo.caFile : undefined;
-  }
-
-  private resolveFileValue(filePath?: string): string | undefined {
-    if (!filePath || !existsSync(filePath)) {
-      return undefined;
-    }
-
-    const value = readFileSync(filePath, "utf8").trim();
-    return value || undefined;
   }
 }
 

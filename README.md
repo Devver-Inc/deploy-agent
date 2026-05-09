@@ -47,10 +47,7 @@ bun run dev   # watch mode
 | `DEVVER_SECRET`     | **Yes**  | —            | API authentication secret (`x-devver-secret` header) |
 | `DEVVER_DATA_DIR`   | No       | `/app`       | Base directory for repos, deployments and data       |
 | `DEVVER_WIDGET_URL` | No       | CDN jsdelivr | Devver overlay script URL                            |
-| `DEVVER_MONGO_CA_FILE` | No    | `/var/run/secrets/devver/mongo/ca.crt` | Path to Mongo CA bundle used by `/mongo/databases` |
-| `DEVVER_MONGO_CONNECTION_STRING_FILE` | Pod: **Yes** / Local: No | — | File containing the Mongo connection string mounted from the chart secret |
-| `DEVVER_MONGO_CONNECTION_STRING` | Local only | — | Inline Mongo connection string fallback for local development |
-| `DEVVER_MONGO_TLS_ALLOW_INVALID_CERTIFICATES` | No | auto in dev | Allows invalid Mongo TLS certs as local fallback |
+| `DEVVER_MONGO_CONNECTION_STRING` | Mongo routes: **Yes** | — | Full Mongo connection string used by `/mongo/databases` |
 | `NODE_ENV`          | No       | —            | `production` for deploys                             |
 | `PORT`              | No       | `8080`       | Deploy Agent port                                    |
 
@@ -149,7 +146,7 @@ GET /logs/:deploymentId
 ### Mongo
 
 ```
-GET /mongo/databases?orgSlug=my-org&projectSlug=my-project
+GET /mongo/databases
 ```
 
 Returns:
@@ -164,16 +161,11 @@ Returns:
 ]
 ```
 
-The agent connects internally to `${orgSlug}-${projectSlug}-mongo:27017` using
-TLS. If `DEVVER_MONGO_CA_FILE` exists, it is used as the CA bundle. In
-non-production environments, invalid certificates are allowed as a fallback
-when no CA file is mounted, unless
-`DEVVER_MONGO_TLS_ALLOW_INVALID_CERTIFICATES=false` is set.
+The agent uses `DEVVER_MONGO_CONNECTION_STRING` directly. A typical value is:
 
-In the pod, mount the chart secret and expose
-`DEVVER_MONGO_CONNECTION_STRING_FILE` to the agent. For local development,
-`DEVVER_MONGO_CONNECTION_STRING` can be used as a fallback when no secret file
-is mounted.
+```txt
+mongodb://root:senha@test-overlay-test-db-mongo:27017/admin?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
+```
 
 ## Deploy Pipeline
 
