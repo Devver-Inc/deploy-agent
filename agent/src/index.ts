@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { repoRoutes } from "./routes/repos";
 import { deploymentRoutes } from "./routes/deployments";
 import { logRoutes } from "./routes/logs";
+import { mongoRoutes } from "./routes/mongo";
 
 const DEVVER_SECRET = process.env.DEVVER_SECRET;
 if (!DEVVER_SECRET) {
@@ -57,6 +58,7 @@ const app = new Elysia()
   .use(repoRoutes)
   .use(deploymentRoutes)
   .use(logRoutes)
+  .use(mongoRoutes)
 
   .listen(PORT);
 
