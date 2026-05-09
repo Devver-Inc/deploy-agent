@@ -8,9 +8,10 @@ services:
       - devver-app:/app
       - devver-pm2:/root/.pm2
     environment:
-      - DEVVER_SECRET=dev-secret-123
-      - NODE_ENV=production
-      - DEVVER_WIDGET_URL=https://cdn.jsdelivr.net/gh/Devver-Inc/overlay@main/public/devver-overlay.iife.js
+      - DEVVER_SECRET
+      - NODE_ENV
+      - DEVVER_WIDGET_URL
+      - DEVVER_MONGO_CONNECTION_STRING
 
 volumes:
   devver-app:
