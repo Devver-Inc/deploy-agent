@@ -12,7 +12,7 @@ RUN apk add --no-cache \
     bash \
     psmisc
 
-RUN npm install -g pm2
+RUN npm install -g pm2 @endevco/aube --ignore-scripts=false
 
 # Folder structure
 RUN mkdir -p /app/repos \
@@ -23,6 +23,7 @@ RUN mkdir -p /app/repos \
 WORKDIR /app/agent
 
 COPY agent/package.json ./package.json
+COPY agent/bun.lock ./bun.lock
 COPY agent/tsconfig.json ./tsconfig.json
 COPY agent/src ./src
 

@@ -27,9 +27,9 @@ export class DeployValidator {
     }
     const [serviceName, config] = entries[0]!;
     try {
-      assertSafeShellCommand(config.install || "bun install");
+      if (config.install) assertSafeShellCommand(config.install);
       if (config.build) assertSafeShellCommand(config.build);
-      assertSafeShellCommand(config.start);
+      if (config.start) assertSafeShellCommand(config.start);
     } catch (error: any) {
       throw this.validationFailure(
         `Unsafe command detected in service '${serviceName}'.`,

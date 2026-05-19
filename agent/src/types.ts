@@ -37,7 +37,7 @@ export interface ServiceConfig {
   install?: string;
   skipInstall?: boolean;
   build?: string;
-  start: string;
+  start?: string;
 }
 
 export interface CreateRepoRequest {

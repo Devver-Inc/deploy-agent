@@ -28,6 +28,9 @@ import { DeployErrorFactory } from "./deploy/deploy-error-factory";
 import { DeployRollbackService } from "./deploy/deploy-rollback-service";
 import type { DeployContext } from "./deploy/internal-types";
 
+const DEFAULT_INSTALL_COMMAND = "aube install";
+const DEFAULT_START_COMMAND = "aube run start";
+
 export class DeployService {
   private lock = new DeploymentLock();
   private validator = new DeployValidator();
@@ -79,6 +82,13 @@ export class DeployService {
     }
     const [name, serviceConfig] = entries[0];
     const serviceName = name as ServiceName;
+    serviceConfig.install ??= DEFAULT_INSTALL_COMMAND;
+    serviceConfig.start ??= DEFAULT_START_COMMAND;
+
+    const normalizedRequest: DeployRequest = {
+      ...request,
+      service: { ...request.service, [serviceName]: serviceConfig },
+    };
 
     this.logger.log("info", "deploy.start", {
       requestId: ctx.requestId,
@@ -88,12 +98,12 @@ export class DeployService {
       serviceName,
     });
 
-    this.validator.validateRequest(request);
+    this.validator.validateRequest(normalizedRequest);
 
-    if (!repoManager.exists(request.repo)) {
+    if (!repoManager.exists(normalizedRequest.repo)) {
       throw new DeployError(
         ErrorCode.REPO_NOT_FOUND,
-        `Repo '${request.repo}' does not exist. Create it first via POST /repos.`,
+        `Repo '${normalizedRequest.repo}' does not exist. Create it first via POST /repos.`,
         {
           step: 0,
           stage: DeployStage.VALIDATION,
@@ -101,14 +111,14 @@ export class DeployService {
       );
     }
 
-    await this.rollbackService.captureSnapshot(ctx, request);
-    await this.setupWorktree(ctx, request);
+    await this.rollbackService.captureSnapshot(ctx, normalizedRequest);
+    await this.setupWorktree(ctx, normalizedRequest);
 
     const { port, url } = await this.deployService(
       ctx,
       serviceName,
       serviceConfig,
-      request.env ?? {},
+      normalizedRequest.env ?? {},
     );
 
     await this.setupNginx(ctx, serviceName, port);
@@ -184,7 +194,7 @@ export class DeployService {
 
     if (!config.skipInstall) {
       await this.runCommand(
-        config.install || "bun install",
+        config.install!,
         servicePath,
         ErrorCode.INSTALL_ERROR,
         serviceName,
@@ -249,7 +259,7 @@ export class DeployService {
     servicePath: string,
     extraEnv: Record<string, string>,
   ): Promise<void> {
-    const rawCommand = config.start || "bun run start";
+    const rawCommand = config.start!;
     const command =
       serviceName === "web"
         ? prepareSmartCommand(rawCommand, port)

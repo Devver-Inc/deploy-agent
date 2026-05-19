@@ -1,5 +1,5 @@
 export function prepareSmartCommand(cmd: string, port: number): string {
-  const needsDoubleDash = /\b(npm|yarn|pnpm|bun)\s+run\b/.test(cmd);
+  const needsDoubleDash = /\b(npm|yarn|pnpm|bun|aube)\s+run\b/.test(cmd);
   const hasPortInCmd = /--port\s+\d+|PORT=\d+/.test(cmd);
 
   if (hasPortInCmd) return cmd.replace(/--port\s+\d+/, `--port ${port}`);
