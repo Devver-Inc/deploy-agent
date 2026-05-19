@@ -104,9 +104,20 @@ export interface NginxConfigSnapshot {
   content?: string;
 }
 
+export interface DeployBenchmark {
+  validation?: number;
+  snapshot?: number;
+  worktree?: number;
+  install?: number;
+  build?: number;
+  process?: number;
+  nginx?: number;
+}
+
 export interface DeployResponse extends DeploymentResponse {
   success: true;
   duration: number;
+  benchmark: DeployBenchmark;
 }
 
 export interface ErrorResponse {
