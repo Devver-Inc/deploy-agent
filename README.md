@@ -36,8 +36,8 @@ The container exposes a single port:
 
 ```bash
 cd agent
-bun install
-bun run dev   # watch mode
+aube install
+aube run dev   # watch mode
 ```
 
 ## Environment Variables
@@ -113,12 +113,12 @@ GET /health
   "service": {
     "web": {
       "root": "apps/web",
-      "install": "bun install",
-      "build": "bun run build",
-      "start": "bun run start"
+      "install": "aube install",
+      "build": "aube run build",
+      "start": "aube run start"
     },
     "api": {
-      "start": "bun run start"
+      "start": "aube run start"
     }
   },
   "env": {
@@ -171,8 +171,8 @@ mongodb://root:senha@test-overlay-test-db-mongo:27017/admin?authSource=admin&tls
 
 1. **Validation** — verifies repo, branch and service config
 2. **Worktree** — creates/updates Git worktree for the branch
-3. **Install** — runs install command (e.g. `bun install`)
-4. **Build** — runs build command (e.g. `bun run build`)
+3. **Install** — runs install command (e.g. `aube install`)
+4. **Build** — runs build command (e.g. `aube run build`)
 5. **Process** — registers and starts processes via PM2
 6. **Nginx** — generates dynamic config and reloads Nginx
 
@@ -209,7 +209,7 @@ curl -X POST http://localhost:3080/deploy \
     "repo": "my-app",
     "branch": "main",
     "overlayAccessControl": {"commentPermission": "team_only"},
-    "service": {"web": {"start": "bun run start"}}
+    "service": {"web": {"start": "aube run start"}}
   }'
 
 # 5. Check deployments

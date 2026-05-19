@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { deployService } from "../services/deploy-service";
-import { OverlayCommentPermission } from "../types";
+import { OverlayCommentPermission, type DeployBenchmark } from "../types";
 import {
   BRANCH_PATTERN,
   COMMIT_PATTERN,
@@ -10,38 +10,83 @@ import {
 import { toApiError } from "../utils/api-error";
 import { pm2Manager } from "../services/pm2-manager";
 
+const deployBodySchema = t.Object({
+  repo: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
+  branch: t.String({ minLength: 1, pattern: BRANCH_PATTERN }),
+  commit: t.Optional(t.String({ pattern: COMMIT_PATTERN })),
+  projectId: t.Optional(t.String({ minLength: 1 })),
+  organizationId: t.Optional(t.String({ minLength: 1 })),
+  overlayAccessControl: t.Object({
+    commentPermission: t.Enum(OverlayCommentPermission),
+  }),
+  service: t.Partial(
+    t.Object({
+      web: t.Object({
+        root: t.Optional(t.String()),
+        install: t.Optional(t.String()),
+        skipInstall: t.Optional(t.Boolean()),
+        build: t.Optional(t.String()),
+        start: t.Optional(t.String()),
+      }),
+      api: t.Object({
+        root: t.Optional(t.String()),
+        install: t.Optional(t.String()),
+        skipInstall: t.Optional(t.Boolean()),
+        build: t.Optional(t.String()),
+        start: t.Optional(t.String()),
+      }),
+    }),
+  ),
+  env: t.Optional(t.Record(t.String(), t.String())),
+});
+
+const encoder = new TextEncoder();
+
+function sseEvent(event: string, data: unknown): Uint8Array {
+  return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
 export const deploymentRoutes = new Elysia()
   .post("/deploy", async ({ body }) => deployService.deploy(body), {
-    body: t.Object({
-      repo: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
-      branch: t.String({ minLength: 1, pattern: BRANCH_PATTERN }),
-      commit: t.Optional(t.String({ pattern: COMMIT_PATTERN })),
-      projectId: t.Optional(t.String({ minLength: 1 })),
-      organizationId: t.Optional(t.String({ minLength: 1 })),
-      overlayAccessControl: t.Object({
-        commentPermission: t.Enum(OverlayCommentPermission),
-      }),
-      service: t.Partial(
-        t.Object({
-          web: t.Object({
-            root: t.Optional(t.String()),
-            install: t.Optional(t.String()),
-            skipInstall: t.Optional(t.Boolean()),
-            build: t.Optional(t.String()),
-            start: t.String(),
-          }),
-          api: t.Object({
-            root: t.Optional(t.String()),
-            install: t.Optional(t.String()),
-            skipInstall: t.Optional(t.Boolean()),
-            build: t.Optional(t.String()),
-            start: t.String(),
-          }),
-        }),
-      ),
-      env: t.Optional(t.Record(t.String(), t.String())),
-    }),
+    body: deployBodySchema,
   })
+
+  .post(
+    "/deploy/stream",
+    async ({ body }) => {
+      let enqueue: (chunk: Uint8Array) => void;
+      let close: () => void;
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          enqueue = (chunk) => controller.enqueue(chunk);
+          close = () => controller.close();
+        },
+      });
+
+      const onPhaseComplete = (
+        phase: keyof DeployBenchmark,
+        durationMs: number,
+      ) => {
+        enqueue(sseEvent("phase", { phase, durationMs }));
+      };
+
+      deployService.deploy(body, onPhaseComplete).then((result) => {
+        enqueue(sseEvent(result.success ? "complete" : "error", result));
+        close();
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    },
+    { body: deployBodySchema },
+  )
 
   .get(
     "/deployments",

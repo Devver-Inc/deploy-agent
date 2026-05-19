@@ -4,6 +4,7 @@ import type {
   ErrorCode,
   NginxConfigSnapshot,
   PortRegistryEntry,
+  DeployBenchmark,
 } from "../../types";
 
 export interface RollbackSnapshot {
@@ -40,4 +41,6 @@ export interface DeployContext {
   startedProcess?: string;
   portAllocated: boolean;
   rollbackSnapshot?: RollbackSnapshot;
+  benchmark: DeployBenchmark;
+  onPhaseComplete?: (phase: keyof DeployBenchmark, durationMs: number) => void;
 }

@@ -8,6 +8,7 @@ import {
   DeploymentResponse,
   ListDeploymentsQuery,
   type ServiceName,
+  type DeployBenchmark,
 } from "../types";
 import { gitManager } from "./git-manager";
 import { portManager } from "./port-manager";
@@ -28,6 +29,9 @@ import { DeployErrorFactory } from "./deploy/deploy-error-factory";
 import { DeployRollbackService } from "./deploy/deploy-rollback-service";
 import type { DeployContext } from "./deploy/internal-types";
 
+const DEFAULT_INSTALL_COMMAND = "aube install";
+const DEFAULT_START_COMMAND = "aube run start";
+
 export class DeployService {
   private lock = new DeploymentLock();
   private validator = new DeployValidator();
@@ -37,6 +41,10 @@ export class DeployService {
 
   async deploy(
     request: DeployRequest,
+    onPhaseComplete?: (
+      phase: keyof DeployBenchmark,
+      durationMs: number,
+    ) => void,
   ): Promise<DeployResponse | ErrorResponse> {
     const startTime = Date.now();
     const ctx: DeployContext = {
@@ -50,6 +58,8 @@ export class DeployService {
       overlayAccessControl: request.overlayAccessControl,
       isNewWorktree: false,
       portAllocated: false,
+      benchmark: {},
+      onPhaseComplete,
     };
 
     return this.lock.withLock(ctx.deploymentId, async () => {
@@ -79,6 +89,13 @@ export class DeployService {
     }
     const [name, serviceConfig] = entries[0];
     const serviceName = name as ServiceName;
+    serviceConfig.install ??= DEFAULT_INSTALL_COMMAND;
+    serviceConfig.start ??= DEFAULT_START_COMMAND;
+
+    const normalizedRequest: DeployRequest = {
+      ...request,
+      service: { ...request.service, [serviceName]: serviceConfig },
+    };
 
     this.logger.log("info", "deploy.start", {
       requestId: ctx.requestId,
@@ -88,30 +105,38 @@ export class DeployService {
       serviceName,
     });
 
-    this.validator.validateRequest(request);
+    await this.timed(ctx, "validation", async () => {
+      this.validator.validateRequest(normalizedRequest);
 
-    if (!repoManager.exists(request.repo)) {
-      throw new DeployError(
-        ErrorCode.REPO_NOT_FOUND,
-        `Repo '${request.repo}' does not exist. Create it first via POST /repos.`,
-        {
-          step: 0,
-          stage: DeployStage.VALIDATION,
-        },
-      );
-    }
+      if (!repoManager.exists(normalizedRequest.repo)) {
+        throw new DeployError(
+          ErrorCode.REPO_NOT_FOUND,
+          `Repo '${normalizedRequest.repo}' does not exist. Create it first via POST /repos.`,
+          {
+            step: 0,
+            stage: DeployStage.VALIDATION,
+          },
+        );
+      }
+    });
 
-    await this.rollbackService.captureSnapshot(ctx, request);
-    await this.setupWorktree(ctx, request);
+    await this.timed(ctx, "snapshot", () =>
+      this.rollbackService.captureSnapshot(ctx, normalizedRequest),
+    );
+    await this.timed(ctx, "worktree", () =>
+      this.setupWorktree(ctx, normalizedRequest),
+    );
 
     const { port, url } = await this.deployService(
       ctx,
       serviceName,
       serviceConfig,
-      request.env ?? {},
+      normalizedRequest.env ?? {},
     );
 
-    await this.setupNginx(ctx, serviceName, port);
+    await this.timed(ctx, "nginx", () =>
+      this.setupNginx(ctx, serviceName, port),
+    );
 
     this.logger.log("info", "deploy.success", {
       requestId: ctx.requestId,
@@ -119,6 +144,7 @@ export class DeployService {
       branch: ctx.branch,
       commit: ctx.commit,
       durationMs: Date.now() - startTime,
+      benchmark: ctx.benchmark,
     });
 
     const processes = await pm2Manager.list();
@@ -133,6 +159,7 @@ export class DeployService {
         processes.find((p) => matchesDeployment(p.name, ctx.deploymentId)) ??
         null,
       duration: Date.now() - startTime,
+      benchmark: ctx.benchmark,
     };
   }
 
@@ -183,33 +210,32 @@ export class DeployService {
     }
 
     if (!config.skipInstall) {
-      await this.runCommand(
-        config.install || "bun install",
-        servicePath,
-        ErrorCode.INSTALL_ERROR,
-        serviceName,
-        2,
-        DeployStage.INSTALL,
+      await this.timed(ctx, "install", () =>
+        this.runCommand(
+          config.install!,
+          servicePath,
+          ErrorCode.INSTALL_ERROR,
+          serviceName,
+          2,
+          DeployStage.INSTALL,
+        ),
       );
     }
     if (config.build) {
-      await this.runCommand(
-        config.build,
-        servicePath,
-        ErrorCode.BUILD_ERROR,
-        serviceName,
-        3,
-        DeployStage.BUILD,
+      await this.timed(ctx, "build", () =>
+        this.runCommand(
+          config.build!,
+          servicePath,
+          ErrorCode.BUILD_ERROR,
+          serviceName,
+          3,
+          DeployStage.BUILD,
+        ),
       );
     }
 
-    await this.startProcess(
-      ctx,
-      serviceName,
-      config,
-      port,
-      servicePath,
-      extraEnv,
+    await this.timed(ctx, "process", () =>
+      this.startProcess(ctx, serviceName, config, port, servicePath, extraEnv),
     );
 
     const baseUrl = repoManager.getBaseUrl(ctx.repo);
@@ -249,7 +275,7 @@ export class DeployService {
     servicePath: string,
     extraEnv: Record<string, string>,
   ): Promise<void> {
-    const rawCommand = config.start || "bun run start";
+    const rawCommand = config.start!;
     const command =
       serviceName === "web"
         ? prepareSmartCommand(rawCommand, port)
@@ -349,6 +375,19 @@ export class DeployService {
       await this.removeDeployment(dep.deploymentId);
     }
     await repoManager.delete(name);
+  }
+
+  private async timed<T>(
+    ctx: DeployContext,
+    key: keyof DeployBenchmark,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const t = Date.now();
+    const result = await fn();
+    const durationMs = Date.now() - t;
+    ctx.benchmark[key] = durationMs;
+    ctx.onPhaseComplete?.(key, durationMs);
+    return result;
   }
 
   private async setupNginx(
