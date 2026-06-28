@@ -29,8 +29,8 @@ import { DeployErrorFactory } from "./deploy/deploy-error-factory";
 import { DeployRollbackService } from "./deploy/deploy-rollback-service";
 import type { DeployContext } from "./deploy/internal-types";
 
-const DEFAULT_INSTALL_COMMAND = "aube install";
-const DEFAULT_START_COMMAND = "aube run start";
+const DEFAULT_INSTALL_COMMAND = "bun install";
+const DEFAULT_START_COMMAND = "bun run start";
 
 export class DeployService {
   private lock = new DeploymentLock();

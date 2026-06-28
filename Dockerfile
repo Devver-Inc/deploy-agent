@@ -12,7 +12,7 @@ RUN apk add --no-cache \
     bash \
     psmisc
 
-RUN npm install -g pm2 @endevco/aube --ignore-scripts=false
+RUN npm install -g pm2
 
 # Folder structure
 RUN mkdir -p /app/repos \
