@@ -12,7 +12,7 @@ RUN apk add --no-cache \
     bash \
     psmisc
 
-RUN npm install -g pm2
+RUN npm install -g pm2 vite
 
 # Folder structure
 RUN mkdir -p /app/repos \
