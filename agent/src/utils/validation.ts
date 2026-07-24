@@ -1,3 +1,5 @@
+import { isAbsolute, relative, resolve, sep } from "path";
+
 const REPO_NAME_REGEX = /^[a-z0-9-]+$/;
 const BRANCH_REGEX =
   /^(?!\/)(?!.*\.\.)(?!.*\/\/)(?!.*\s)[A-Za-z0-9._\/-]{1,120}$/;
@@ -24,6 +26,25 @@ export function isValidCommit(commit: string): boolean {
 
 export function isValidPm2ProcessName(name: string): boolean {
   return PM2_PROCESS_REGEX.test(name);
+}
+
+export function resolvePathWithin(
+  basePath: string,
+  requestedPath = ".",
+): string {
+  const resolvedBase = resolve(basePath);
+  const resolvedPath = resolve(resolvedBase, requestedPath);
+  const relativePath = relative(resolvedBase, resolvedPath);
+
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath)
+  ) {
+    throw new Error("Path must stay inside the deployment worktree.");
+  }
+
+  return resolvedPath;
 }
 
 export function assertSafeShellCommand(command: string): void {

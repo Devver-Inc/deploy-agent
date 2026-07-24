@@ -4,6 +4,7 @@ import {
   isValidBranch,
   isValidCommit,
   isValidRepoName,
+  resolvePathWithin,
 } from "../../utils/validation";
 import type { DeployFailure } from "./internal-types";
 
@@ -22,10 +23,23 @@ export class DeployValidator {
     }
 
     const entries = Object.entries(request.service);
-    if (entries.length === 0) {
+    if (entries.length !== 1) {
       throw this.validationFailure("Request must include exactly one service.");
     }
     const [serviceName, config] = entries[0]!;
+
+    if (config.root) {
+      try {
+        resolvePathWithin(".", config.root);
+      } catch (error: any) {
+        throw this.validationFailure(
+          `Invalid root path for service '${serviceName}'.`,
+          error?.message,
+          serviceName,
+        );
+      }
+    }
+
     try {
       if (config.install) assertSafeShellCommand(config.install);
       if (config.build) assertSafeShellCommand(config.build);

@@ -19,6 +19,7 @@ import { exec } from "../utils/exec";
 import { prepareSmartCommand, buildEnvVars } from "../utils/deploy-helpers";
 import { safeBranch } from "../utils/branch";
 import { join } from "path";
+import { resolvePathWithin } from "../utils/validation";
 import { writeFileSync } from "fs";
 import { DeployError } from "../utils/deploy-error";
 import { pollUntil } from "../utils/poll-until";
@@ -196,9 +197,7 @@ export class DeployService {
     extraEnv: Record<string, string>,
   ): Promise<{ port: number; url: string }> {
     const worktreePath = gitManager.getWorktreePath(ctx.branch, ctx.repo);
-    const servicePath = config.root
-      ? join(worktreePath, config.root)
-      : worktreePath;
+    const servicePath = resolvePathWithin(worktreePath, config.root);
 
     const port = await this.allocatePort(ctx, serviceName);
 

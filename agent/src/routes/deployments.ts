@@ -1,6 +1,11 @@
 import { Elysia, t } from "elysia";
 import { deployService } from "../services/deploy-service";
-import { OverlayCommentPermission, type DeployBenchmark } from "../types";
+import {
+  ErrorCode,
+  OverlayCommentPermission,
+  type DeployBenchmark,
+  type ErrorResponse,
+} from "../types";
 import {
   BRANCH_PATTERN,
   COMMIT_PATTERN,
@@ -46,6 +51,20 @@ function sseEvent(event: string, data: unknown): Uint8Array {
   return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+function unexpectedDeployError(error: unknown): ErrorResponse {
+  return {
+    success: false,
+    error: {
+      code: ErrorCode.DEPLOY_ERROR,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unexpected deployment stream failure",
+    },
+    duration: 0,
+  };
+}
+
 export const deploymentRoutes = new Elysia()
   .post("/deploy", async ({ body }) => deployService.deploy(body), {
     body: deployBodySchema,
@@ -55,7 +74,7 @@ export const deploymentRoutes = new Elysia()
     "/deploy/stream",
     async ({ body }) => {
       let enqueue: (chunk: Uint8Array) => void;
-      let close: () => void;
+      let close!: () => void;
 
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -71,10 +90,15 @@ export const deploymentRoutes = new Elysia()
         enqueue(sseEvent("phase", { phase, durationMs }));
       };
 
-      deployService.deploy(body, onPhaseComplete).then((result) => {
-        enqueue(sseEvent(result.success ? "complete" : "error", result));
-        close();
-      });
+      void deployService
+        .deploy(body, onPhaseComplete)
+        .then((result) => {
+          enqueue(sseEvent(result.success ? "complete" : "error", result));
+        })
+        .catch((error: unknown) => {
+          enqueue(sseEvent("error", unexpectedDeployError(error)));
+        })
+        .finally(close);
 
       return new Response(stream, {
         headers: {
