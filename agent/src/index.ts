@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { repoRoutes } from "./routes/repos";
 import { deploymentRoutes } from "./routes/deployments";
 import { logRoutes } from "./routes/logs";
-import { mongoRoutes } from "./routes/mongo";
+import { databaseRoutes } from "./routes/databases";
 import { gitAuthRoutes } from "./middleware/git-auth";
 import { timingSafeEqual } from "crypto";
 import { ApplicationError } from "./errors/application-error";
@@ -85,7 +85,7 @@ const app = new Elysia()
   .use(repoRoutes)
   .use(deploymentRoutes)
   .use(logRoutes)
-  .use(mongoRoutes)
+  .use(databaseRoutes)
 
   .listen(PORT);
 
