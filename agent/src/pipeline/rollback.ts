@@ -17,6 +17,18 @@ export class RollbackService {
 
   async rollback(ctx: DeployContext): Promise<RollbackResult> {
     const issues: string[] = [];
+    const attempt = async (
+      label: string,
+      action: () => Promise<void> | void,
+    ): Promise<void> => {
+      try {
+        await action();
+      } catch (error: unknown) {
+        issues.push(
+          `${label}: ${error instanceof Error ? error.message : "unknown error"}`,
+        );
+      }
+    };
     const attempted =
       ctx.worktreeTouched ||
       ctx.processTouched ||
@@ -29,40 +41,32 @@ export class RollbackService {
 
     // Stop any process created or replaced by this attempt.
     if (ctx.processTouched) {
-      try {
-        await this.registry.pm2.deleteByDeployment(ctx.deploymentId);
-      } catch (error: any) {
-        issues.push(
-          `delete failed deployment processes: ${error?.message ?? "unknown error"}`,
-        );
-      }
+      await attempt("delete failed deployment processes", () =>
+        this.registry.pm2.deleteByDeployment(ctx.deploymentId),
+      );
     }
 
     // Restore the previous immutable release before restarting its process.
     if (ctx.worktreePromoted) {
-      try {
-        await this.registry.git.rollbackPromotion(
+      await attempt("restore worktree", () =>
+        this.registry.git.rollbackPromotion(
           ctx.branch,
           ctx.repo,
           ctx.requestId,
-        );
-      } catch (error: any) {
-        issues.push(`restore worktree: ${error?.message ?? "unknown error"}`);
-      }
+        ),
+      );
     } else if (ctx.worktreeTouched) {
-      try {
-        await this.registry.git.discardCandidateWorktree(
+      await attempt("discard candidate", () =>
+        this.registry.git.discardCandidateWorktree(
           ctx.branch,
           ctx.repo,
           ctx.requestId,
-        );
-      } catch (error: any) {
-        issues.push(`discard candidate: ${error?.message ?? "unknown error"}`);
-      }
+        ),
+      );
     }
 
     if (ctx.portAllocated) {
-      try {
+      await attempt("restore ports", () => {
         if (ctx.rollbackSnapshot?.previousEntry) {
           this.registry.port.update(
             ctx.deploymentId,
@@ -71,25 +75,18 @@ export class RollbackService {
         } else {
           this.registry.port.release(ctx.deploymentId);
         }
-      } catch (error: any) {
-        issues.push(`restore ports: ${error?.message ?? "unknown error"}`);
-      }
+      });
     }
 
-    if (ctx.processTouched && ctx.rollbackSnapshot?.processes.length) {
-      try {
-        await this.registry.pm2.restoreSnapshots(
-          ctx.rollbackSnapshot.processes,
-        );
-      } catch (error: any) {
-        issues.push(
-          `restore PM2 processes: ${error?.message ?? "unknown error"}`,
-        );
-      }
+    const previousProcesses = ctx.rollbackSnapshot?.processes;
+    if (ctx.processTouched && previousProcesses?.length) {
+      await attempt("restore PM2 processes", () =>
+        this.registry.pm2.restoreSnapshots(previousProcesses),
+      );
     }
 
     if (ctx.nginxTouched) {
-      try {
+      await attempt("restore nginx config", async () => {
         if (
           ctx.rollbackSnapshot?.nginxConfig.exists &&
           ctx.rollbackSnapshot.nginxConfig.content
@@ -102,11 +99,7 @@ export class RollbackService {
           await this.registry.nginx.removeConfig(ctx.deploymentId);
         }
         await this.registry.nginx.reload();
-      } catch (error: any) {
-        issues.push(
-          `restore nginx config: ${error?.message ?? "unknown error"}`,
-        );
-      }
+      });
     }
 
     const result: RollbackResult = {

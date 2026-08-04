@@ -1,6 +1,5 @@
 import type { DeployStageHandler } from "./stage.interface";
 import type { DeployContext } from "../context";
-import { getRuntimeEnv } from "../runtime-detector";
 import { DeployError } from "../../utils/deploy-error";
 import { runDeployCommand } from "../run-deploy-command";
 import { ErrorCode, DeployStage, type DeployRequest } from "../../types";
@@ -38,9 +37,7 @@ export class BuildStage implements DeployStageHandler {
       );
     }
 
-    const runtimeEnv = ctx.runtimeLanguage
-      ? getRuntimeEnv(ctx.runtimeLanguage, ctx.servicePath)
-      : {};
+    const runtimeEnv = ctx.runtime?.environment(ctx.servicePath, "build") ?? {};
 
     await runDeployCommand({
       command: config.build,

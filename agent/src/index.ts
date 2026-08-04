@@ -5,6 +5,8 @@ import { logRoutes } from "./routes/logs";
 import { mongoRoutes } from "./routes/mongo";
 import { gitAuthRoutes } from "./middleware/git-auth";
 import { timingSafeEqual } from "crypto";
+import { ApplicationError } from "./errors/application-error";
+import { toApiError } from "./utils/api-error";
 
 const DEVVER_SECRET = process.env.DEVVER_SECRET;
 if (!DEVVER_SECRET) {
@@ -33,6 +35,15 @@ const app = new Elysia()
           message: error.message,
         },
       };
+    }
+
+    if (error instanceof ApplicationError) {
+      const normalized = toApiError(error, {
+        code: "REQUEST_FAILED",
+        message: "Request failed.",
+      });
+      set.status = normalized.status;
+      return normalized.body;
     }
   })
 

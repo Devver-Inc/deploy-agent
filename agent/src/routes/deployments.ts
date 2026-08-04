@@ -125,7 +125,7 @@ export const deploymentRoutes = new Elysia()
           success: true as const,
           deploymentId: params.deploymentId,
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         const normalized = toApiError(error, {
           code: "DEPLOYMENT_DELETE_FAILED",
           message: "Failed to delete deployment.",
@@ -151,7 +151,7 @@ export const deploymentRoutes = new Elysia()
           name: body.name,
           action: "start" as const,
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         const normalized = toApiError(error, {
           code: "PM2_START_FAILED",
           message: `Failed to start PM2 process '${body.name}'.`,
@@ -177,7 +177,7 @@ export const deploymentRoutes = new Elysia()
           name: body.name,
           action: "stop" as const,
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         const normalized = toApiError(error, {
           code: "PM2_STOP_FAILED",
           message: `Failed to stop PM2 process '${body.name}'.`,
@@ -203,7 +203,7 @@ export const deploymentRoutes = new Elysia()
           name: body.name,
           action: "restart" as const,
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         const normalized = toApiError(error, {
           code: "PM2_RESTART_FAILED",
           message: `Failed to restart PM2 process '${body.name}'.`,

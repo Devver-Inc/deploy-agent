@@ -4,6 +4,14 @@ import { defaultRegistry } from "../pipeline/registry";
 import type { ServiceRegistry } from "../pipeline/contracts";
 import { lifecycleLock } from "./deploy/lifecycle-lock";
 import { isValidPm2ProcessName, isValidRepoName } from "../utils/validation";
+import {
+  ApplicationError,
+  ApplicationFailureKind,
+} from "../errors/application-error";
+
+function validationFailure(message: string): ApplicationError {
+  return new ApplicationError(ApplicationFailureKind.VALIDATION, message);
+}
 
 export class DeploymentAdminService {
   constructor(private readonly registry: ServiceRegistry = defaultRegistry) {}
@@ -16,13 +24,15 @@ export class DeploymentAdminService {
 
   async removeDeployment(deploymentId: string): Promise<void> {
     if (!isValidPm2ProcessName(deploymentId)) {
-      throw new Error("Invalid deployment id.");
+      throw validationFailure("Invalid deployment id.");
     }
     await lifecycleLock.run(() => this.removeDeploymentUnlocked(deploymentId));
   }
 
   async deleteRepo(name: string): Promise<void> {
-    if (!isValidRepoName(name)) throw new Error("Invalid repository name.");
+    if (!isValidRepoName(name)) {
+      throw validationFailure("Invalid repository name.");
+    }
 
     await lifecycleLock.run(async () => {
       const deployments = await this.listDeploymentsUnlocked({ repo: name });
@@ -51,15 +61,34 @@ export class DeploymentAdminService {
     name: string,
     action: () => Promise<void>,
   ): Promise<void> {
-    if (!isValidPm2ProcessName(name)) throw new Error("Invalid process name.");
-    await lifecycleLock.run(action);
+    if (!isValidPm2ProcessName(name)) {
+      throw validationFailure("Invalid process name.");
+    }
+    await lifecycleLock.run(async () => {
+      const exists = (await this.registry.pm2.list()).some(
+        (process) => process.name === name,
+      );
+      if (!exists) {
+        throw new ApplicationError(
+          ApplicationFailureKind.NOT_FOUND,
+          `PM2 process '${name}' not found.`,
+        );
+      }
+      await action();
+    });
   }
 
   private async listDeploymentsUnlocked({
     repo,
   }: ListDeploymentsQuery): Promise<DeploymentResponse[]> {
     if (repo && !isValidRepoName(repo)) {
-      throw new Error("Invalid repository name.");
+      throw validationFailure("Invalid repository name.");
+    }
+    if (repo && !this.registry.repo.exists(repo)) {
+      throw new ApplicationError(
+        ApplicationFailureKind.NOT_FOUND,
+        `Repository '${repo}' not found.`,
+      );
     }
 
     const repos = repo

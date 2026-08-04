@@ -12,7 +12,7 @@ export const logRoutes = new Elysia().get(
         logs: await pm2Manager.getLogsByDeployment(params.deploymentId),
       };
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const normalized = toApiError(error, {
         code: "LOGS_FETCH_FAILED",
         message: "Failed to fetch logs.",

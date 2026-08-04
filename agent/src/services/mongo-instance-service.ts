@@ -1,6 +1,9 @@
 import { MongoClient, MongoServerError } from "mongodb";
 import { config } from "../config";
-import { ApiError } from "../utils/api-error";
+import {
+  ApplicationError,
+  ApplicationFailureKind,
+} from "../errors/application-error";
 import type { MongoDatabaseInfo } from "../types";
 
 const INTERNAL_DATABASES = new Set(["admin", "config", "local"]);
@@ -28,12 +31,11 @@ export class MongoInstanceService {
         error instanceof MongoServerError
           ? "Mongo instance rejected the request."
           : "Mongo instance is unreachable.";
-      throw new ApiError(
-        "MONGO_INSTANCE_UNREACHABLE",
-        502,
-        message,
+      throw new ApplicationError(ApplicationFailureKind.UPSTREAM, message, {
+        code: "MONGO_INSTANCE_UNREACHABLE",
         details,
-      );
+        cause: error,
+      });
     } finally {
       await client.close();
     }
@@ -44,11 +46,13 @@ export class MongoInstanceService {
       return config.mongo.connectionString.trim();
     }
 
-    throw new ApiError(
-      "MONGO_CONFIGURATION_ERROR",
-      500,
+    throw new ApplicationError(
+      ApplicationFailureKind.CONFIGURATION,
       "Mongo connection string is not configured.",
-      "Set DEVVER_MONGO_CONNECTION_STRING in the deploy-agent pod.",
+      {
+        code: "MONGO_CONFIGURATION_ERROR",
+        details: "Set DEVVER_MONGO_CONNECTION_STRING in the deploy-agent pod.",
+      },
     );
   }
 }

@@ -1,7 +1,6 @@
 import type { DeployStageHandler } from "./stage.interface";
 import type { DeployContext } from "../context";
 import type { ServiceRegistry } from "../contracts";
-import { prepareStartCommand, buildEnvVars } from "../../utils/deploy-helpers";
 import { DeployError } from "../../utils/deploy-error";
 import { pollUntil } from "../../utils/poll-until";
 import { ErrorCode, DeployStage, type DeployRequest } from "../../types";
@@ -62,12 +61,7 @@ export class ProcessStage implements DeployStageHandler {
     this.validateCmd(rawCommand, serviceName, 4, DeployStage.PROCESS);
     const command =
       serviceName === "web"
-        ? prepareStartCommand(
-            rawCommand,
-            port,
-            ctx.runtimeLanguage,
-            ctx.runtimeNeedsCliPort,
-          )
+        ? (ctx.runtime?.prepareStart(rawCommand, port) ?? rawCommand)
         : rawCommand;
 
     // Start PM2 process
@@ -84,6 +78,7 @@ export class ProcessStage implements DeployStageHandler {
         ctx.serviceConfig?.root,
       );
       ctx.servicePath = servicePath;
+      const runtimeEnv = ctx.runtime?.environment(servicePath, "run") ?? {};
 
       ctx.processTouched = true;
       await this.registry.pm2.start(
@@ -92,7 +87,7 @@ export class ProcessStage implements DeployStageHandler {
         port,
         command,
         servicePath,
-        buildEnvVars(extraEnv, ctx.runtimeLanguage, servicePath),
+        { ...runtimeEnv, ...extraEnv },
       );
       await this.waitForPort(port, serviceName);
 

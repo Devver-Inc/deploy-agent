@@ -10,7 +10,7 @@ export const mongoRoutes = new Elysia().get(
       const response: MongoDatabaseInfo[] =
         await mongoInstanceService.listDatabases();
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const normalized = toApiError(error, {
         code: "MONGO_DATABASES_FETCH_FAILED",
         message: "Failed to fetch Mongo databases.",

@@ -5,10 +5,7 @@ import type {
   ServiceConfig,
   ServiceName,
 } from "../types";
-import type {
-  RuntimeLanguage,
-  RuntimePackageManager,
-} from "./runtime-detector";
+import type { RuntimePlan } from "./runtime-strategy";
 
 /**
  * Mutable deployment context shared across all pipeline stages.
@@ -38,9 +35,7 @@ export interface DeployContext {
   serviceName?: ServiceName;
   serviceConfig?: ServiceConfig;
   servicePath?: string;
-  runtimeLanguage?: RuntimeLanguage;
-  runtimePackageManager?: RuntimePackageManager;
-  runtimeNeedsCliPort?: boolean;
+  runtime?: RuntimePlan;
 
   onPhaseComplete?: (phase: keyof DeployBenchmark, durationMs: number) => void;
 }

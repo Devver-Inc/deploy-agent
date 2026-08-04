@@ -8,6 +8,17 @@ import { JsonRepoRepository } from "./repo/json-repo-repository";
 import type { RepoConfig, RepoRepository } from "./repo/repo-repository";
 import type { CreateRepoRequest } from "../types";
 import { config } from "../config";
+import {
+  ApplicationError,
+  ApplicationFailureKind,
+} from "../errors/application-error";
+
+function invalidRepositoryName(): ApplicationError {
+  return new ApplicationError(
+    ApplicationFailureKind.VALIDATION,
+    "Invalid repository name.",
+  );
+}
 
 export class RepoManager {
   constructor(private repository: RepoRepository = new JsonRepoRepository()) {
@@ -24,11 +35,16 @@ export class RepoManager {
 
   async create({ name, baseUrl }: CreateRepoRequest): Promise<void> {
     if (!isValidRepoName(name)) {
-      throw new Error("Invalid repository name.");
+      throw invalidRepositoryName();
     }
 
     const repoPath = this.getRepoPath(name);
-    if (existsSync(repoPath)) throw new Error(`Repo '${name}' already exists`);
+    if (existsSync(repoPath)) {
+      throw new ApplicationError(
+        ApplicationFailureKind.CONFLICT,
+        `Repo '${name}' already exists`,
+      );
+    }
     const normalizedBaseUrl = this.normalizeBaseUrl(baseUrl);
 
     ensureDir(repoPath);
@@ -52,7 +68,7 @@ export class RepoManager {
 
   async delete(name: string): Promise<void> {
     if (!isValidRepoName(name)) {
-      throw new Error("Invalid repository name.");
+      throw invalidRepositoryName();
     }
 
     const repoPath = this.getRepoPath(name);
@@ -70,7 +86,12 @@ export class RepoManager {
 
   getBaseUrl(name: string): string {
     const repo = this.repository.get(name);
-    if (!repo) throw new Error(`Repo '${name}' not found in registry`);
+    if (!repo) {
+      throw new ApplicationError(
+        ApplicationFailureKind.NOT_FOUND,
+        `Repo '${name}' not found in registry`,
+      );
+    }
     return repo.baseUrl;
   }
 
@@ -81,9 +102,21 @@ export class RepoManager {
   }
 
   private normalizeBaseUrl(baseUrl: string): string {
-    const parsed = new URL(baseUrl);
+    let parsed: URL;
+    try {
+      parsed = new URL(baseUrl);
+    } catch (cause: unknown) {
+      throw new ApplicationError(
+        ApplicationFailureKind.VALIDATION,
+        "Repository base URL must be a valid HTTP or HTTPS URL.",
+        { cause },
+      );
+    }
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error("Repository base URL must use HTTP or HTTPS.");
+      throw new ApplicationError(
+        ApplicationFailureKind.VALIDATION,
+        "Repository base URL must use HTTP or HTTPS.",
+      );
     }
     return baseUrl.replace(/\/+$/, "");
   }

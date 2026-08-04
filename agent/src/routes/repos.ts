@@ -24,7 +24,7 @@ export const repoRoutes = new Elysia()
           name: body.name,
           pushUrl: repoManager.getPushUrl(body.name),
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         const normalized = toApiError(error, {
           code: "REPO_CREATE_FAILED",
           message: "Failed to create repository.",
@@ -47,7 +47,7 @@ export const repoRoutes = new Elysia()
       try {
         await deploymentAdminService.deleteRepo(params.name);
         return { success: true as const, name: params.name };
-      } catch (error: any) {
+      } catch (error: unknown) {
         const normalized = toApiError(error, {
           code: "REPO_DELETE_FAILED",
           message: "Failed to delete repository.",
