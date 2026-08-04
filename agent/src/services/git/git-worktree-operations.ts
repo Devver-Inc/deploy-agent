@@ -1,39 +1,66 @@
 import { existsSync } from "fs";
+import { dirname } from "path";
 import { exec, execOrThrow } from "../../utils/exec";
 import { ensureDir } from "../../utils/fs";
 
 export class GitWorktreeOperations {
-  worktreeExists(worktreePath: string): boolean {
-    return existsSync(worktreePath);
-  }
-
-  async createWorktree(
+  async createCandidateWorktree(
     repoPath: string,
-    deploymentsPath: string,
-    worktreePath: string,
-    branch: string,
-    commit?: string,
+    candidatePath: string,
+    ref: string,
   ): Promise<void> {
-    ensureDir(deploymentsPath);
+    ensureDir(dirname(candidatePath));
     await execOrThrow(
-      `git worktree add "${worktreePath}" ${commit ?? branch}`,
+      `git worktree add --detach "${candidatePath}" -- "${ref}"`,
       repoPath,
     );
+    await execOrThrow(`chown -R deploy:deploy "${candidatePath}"`);
   }
 
-  async updateWorktree(
+  async promoteCandidateWorktree(
     repoPath: string,
-    worktreePath: string,
-    branch: string,
-    commit?: string,
+    activePath: string,
+    candidatePath: string,
+    backupPath: string,
   ): Promise<void> {
-    await execOrThrow(
-      `git fetch "${repoPath}" ${branch}`,
-      worktreePath,
-    );
-    const latestCommit = commit ?? (await execOrThrow(`git rev-parse FETCH_HEAD`, worktreePath)).trim();
-    await execOrThrow(`git reset --hard ${latestCommit}`, worktreePath);
-    await execOrThrow("git clean -fdx --exclude=node_modules", worktreePath);
+    const hadActiveWorktree = existsSync(activePath);
+    ensureDir(dirname(backupPath));
+
+    if (hadActiveWorktree) {
+      await execOrThrow(
+        `git worktree move "${activePath}" "${backupPath}"`,
+        repoPath,
+      );
+    }
+
+    try {
+      await execOrThrow(
+        `git worktree move "${candidatePath}" "${activePath}"`,
+        repoPath,
+      );
+    } catch (error) {
+      if (hadActiveWorktree && existsSync(backupPath)) {
+        await execOrThrow(
+          `git worktree move "${backupPath}" "${activePath}"`,
+          repoPath,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async rollbackPromotion(
+    repoPath: string,
+    activePath: string,
+    backupPath: string,
+  ): Promise<void> {
+    await this.removeWorktree(repoPath, activePath);
+    if (existsSync(backupPath)) {
+      await execOrThrow(
+        `git worktree move "${backupPath}" "${activePath}"`,
+        repoPath,
+      );
+    }
   }
 
   async removeWorktree(repoPath: string, worktreePath: string): Promise<void> {
@@ -49,14 +76,16 @@ export class GitWorktreeOperations {
     deploymentsPath: string,
   ): Promise<string[]> {
     const result = await exec("git worktree list --porcelain", repoPath);
-    if (!result.success) return [];
+    if (!result.success) {
+      throw new Error(`Failed to list Git worktrees: ${result.stderr}`);
+    }
 
     const worktrees: string[] = [];
     for (const line of result.stdout.split("\n")) {
       if (line.startsWith("worktree ") && line.includes(deploymentsPath)) {
         const path = line.replace("worktree ", "");
         const branch = path.split(`${deploymentsPath}/`)[1];
-        if (branch) worktrees.push(branch);
+        if (branch && !branch.startsWith(".releases/")) worktrees.push(branch);
       }
     }
     return worktrees;

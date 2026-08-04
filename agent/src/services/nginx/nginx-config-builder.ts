@@ -4,6 +4,36 @@ import type { ServiceRoute } from "../nginx-manager";
 
 const DEVVER_WIDGET_URL = process.env.DEVVER_WIDGET_URL ?? "";
 
+function serializeForInlineScript(value: unknown): string {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (character) => {
+    const escapes: Record<string, string> = {
+      "<": "\\u003c",
+      ">": "\\u003e",
+      "&": "\\u0026",
+      "\u2028": "\\u2028",
+      "\u2029": "\\u2029",
+    };
+    return escapes[character];
+  });
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const escapes: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return escapes[character];
+  });
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export class NginxConfigBuilder {
   private buildUrlPrefix(repo: string, branch: string): string {
     return `/${repo}/${safeBranch(branch)}`;
@@ -16,20 +46,23 @@ export class NginxConfigBuilder {
     projectId?: string,
     organizationId?: string,
   ): string {
-    const ctx = JSON.stringify({
+    const ctx = serializeForInlineScript({
       repo,
       branch,
       ...(projectId ? { projectId } : {}),
       ...(organizationId ? { organizationId } : {}),
       ...(overlayAccessControl ? { overlayAccessControl } : {}),
     });
-    return `<script>window.__DEVVER__=${ctx}</script><script src="${DEVVER_WIDGET_URL}" defer></script></body>`;
+    const widget = DEVVER_WIDGET_URL
+      ? `<script src="${escapeHtmlAttribute(DEVVER_WIDGET_URL)}" defer></script>`
+      : "";
+    return `<script>window.__DEVVER__=${ctx}</script>${widget}</body>`;
   }
 
   build(
     repo: string,
     branch: string,
-    { service, port }: ServiceRoute,
+    { service, port, nodeFrontend }: ServiceRoute,
     overlayAccessControl?: OverlayAccessControl,
     projectId?: string,
     organizationId?: string,
@@ -44,6 +77,24 @@ export class NginxConfigBuilder {
     );
     const urlSuffix = service !== "web" ? `/${service}` : "";
     const locationPath = `${prefix}${urlSuffix}`;
+    const regexLocationPath = escapeRegex(locationPath);
+    const nodeFrontendLocations = nodeFrontend
+      ? `
+
+    location ~* ^${regexLocationPath}/(assets|static|_next|__vite_ping|@vite|node_modules|@fs|@id)(.*)$ {
+        proxy_pass http://127.0.0.1:${port}/\$1\$2;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_cache_bypass 1;
+    }
+
+    location ${locationPath}/__hmr {
+        proxy_pass http://127.0.0.1:${port}/__hmr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }`
+      : "";
 
     return `
     location = ${locationPath} {
@@ -68,20 +119,6 @@ export class NginxConfigBuilder {
         sub_filter '"/' '"${locationPath}/';
         sub_filter "'/" "'${locationPath}/";
         sub_filter '</body>' '${widgetSnippet}';
-    }
-
-    location ~* ^${locationPath}/(assets|static|_next|__vite_ping|@vite|node_modules|@fs|@id)(.*)$ {
-        proxy_pass http://127.0.0.1:${port}/\$1\$2;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_cache_bypass 1;
-    }
-
-    location ${locationPath}/__hmr {
-        proxy_pass http://127.0.0.1:${port}/__hmr;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }`;
+    }${nodeFrontendLocations}`;
   }
 }

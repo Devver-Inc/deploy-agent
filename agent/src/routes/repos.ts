@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { repoManager } from "../services/repo-manager";
 import { REPO_NAME_PATTERN } from "../utils/validation";
-import { deployService } from "../services/deploy-service";
+import { deploymentAdminService } from "../services/deployment-admin-service";
 import { toApiError } from "../utils/api-error";
 import type { RepoResponse } from "../types";
 
@@ -45,7 +45,7 @@ export const repoRoutes = new Elysia()
     "/repos/:name",
     async ({ params, set }) => {
       try {
-        await deployService.deleteRepo(params.name);
+        await deploymentAdminService.deleteRepo(params.name);
         return { success: true as const, name: params.name };
       } catch (error: any) {
         const normalized = toApiError(error, {

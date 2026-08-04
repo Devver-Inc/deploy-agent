@@ -6,6 +6,7 @@ import type { OverlayAccessControl, NginxConfigSnapshot } from "../types";
 export interface ServiceRoute {
   service: string;
   port: number;
+  nodeFrontend?: boolean;
 }
 
 export class NginxManager {

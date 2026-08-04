@@ -1,8 +1,19 @@
-import { writeFileSync } from "fs";
+import {
+  chmodSync,
+  chownSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "fs";
 import { createServer } from "net";
 import { exec, execOrThrow } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
-import type { PM2Process, LogEntry } from "../types";
+import type {
+  PM2Process,
+  LogEntry,
+  FileSnapshot,
+  ProcessSnapshot,
+} from "../types";
 import {
   buildProcessName,
   matchesProcess,
@@ -14,24 +25,86 @@ import { pollUntil } from "../utils/poll-until";
 
 export { matchesDeployment };
 
+const ROOT_UID = 0;
+const DEPLOY_GID = 10001;
+
 export class PM2Manager {
+  private snapshotFile(path: string): FileSnapshot {
+    return existsSync(path)
+      ? { path, exists: true, content: readFileSync(path, "utf8") }
+      : { path, exists: false };
+  }
+
+  async snapshotDeployment(deploymentId: string): Promise<ProcessSnapshot[]> {
+    const processes = (await this.list()).filter((process) =>
+      matchesDeployment(process.name, deploymentId),
+    );
+
+    return processes.map((process) => ({
+      name: process.name,
+      status: process.status,
+      ecosystemFile: this.snapshotFile(
+        `${config.paths.pm2Data}/${process.name}.config.js`,
+      ),
+      wrapperScript: this.snapshotFile(
+        `${config.paths.pm2Data}/${process.name}.sh`,
+      ),
+    }));
+  }
+
+  async restoreSnapshots(snapshots: ProcessSnapshot[]): Promise<void> {
+    for (const snapshot of snapshots) {
+      if (
+        !snapshot.ecosystemFile.exists ||
+        snapshot.ecosystemFile.content === undefined ||
+        !snapshot.wrapperScript.exists ||
+        snapshot.wrapperScript.content === undefined
+      ) {
+        throw new Error(`Incomplete PM2 snapshot for ${snapshot.name}`);
+      }
+
+      ensureDir(config.paths.pm2Data);
+      writeFileSync(
+        snapshot.ecosystemFile.path,
+        snapshot.ecosystemFile.content,
+        { mode: 0o600 },
+      );
+      chmodSync(snapshot.ecosystemFile.path, 0o600);
+      writeFileSync(
+        snapshot.wrapperScript.path,
+        snapshot.wrapperScript.content,
+      );
+      chownSync(snapshot.wrapperScript.path, ROOT_UID, DEPLOY_GID);
+      chmodSync(snapshot.wrapperScript.path, 0o750);
+
+      if (snapshot.status === "online" || snapshot.status === "stopped") {
+        await execOrThrow(`pm2 start ${snapshot.ecosystemFile.path}`);
+        await this.waitForProcess(snapshot.name);
+        if (snapshot.status === "stopped") {
+          await execOrThrow(`pm2 stop ${snapshot.name}`);
+        }
+      }
+    }
+    await exec("pm2 save");
+  }
+
   async start(
     service: string,
-    branch: string,
+    deploymentId: string,
     port: number,
     startCommand: string,
     cwd: string,
     env: Record<string, string> = {},
   ): Promise<string> {
-    const name = buildProcessName(service, branch, port);
+    const name = buildProcessName(service, deploymentId, port);
 
     const existing = (await this.list()).filter((p) =>
-      matchesProcess(p.name, service, branch),
+      matchesProcess(p.name, service, deploymentId),
     );
     await Promise.all(existing.map((p) => this.delete(p.name)));
 
     const stillExisting = (await this.list()).filter((p) =>
-      matchesProcess(p.name, service, branch),
+      matchesProcess(p.name, service, deploymentId),
     );
     if (stillExisting.length > 0) {
       throw new Error(
@@ -47,29 +120,35 @@ export class PM2Manager {
     const ecosystemFile = `${config.paths.pm2Data}/${name}.config.js`;
     const wrapperScript = `${config.paths.pm2Data}/${name}.sh`;
 
+    const ecosystem = {
+      apps: [
+        {
+          name,
+          script: wrapperScript,
+          cwd,
+          interpreter: "/bin/sh",
+          uid: "deploy",
+          gid: "deploy",
+          env: envVars,
+          watch: false,
+          autorestart: true,
+          max_restarts: 5,
+          kill_timeout: 5000,
+          treekill: true,
+        },
+      ],
+    };
     writeFileSync(
       ecosystemFile,
-      `module.exports = {
-  apps: [{
-    name: "${name}",
-    script: "${wrapperScript}",
-    cwd: "${cwd}",
-    interpreter: "/bin/sh",
-    env: ${JSON.stringify(envVars)},
-    watch: false,
-    autorestart: true,
-    max_restarts: 5,
-    kill_timeout: 5000,
-    treekill: true,
-  }]
-};`,
+      `module.exports = ${JSON.stringify(ecosystem, null, 2)};`,
+      { mode: 0o600 },
     );
 
-    writeFileSync(
-      wrapperScript,
-      `#!/bin/sh\ncd "${cwd}"\nexec ${startCommand}\n`,
-    );
-    await execOrThrow(`chmod +x ${wrapperScript}`, cwd);
+    writeFileSync(wrapperScript, `#!/bin/sh\nexec ${startCommand}\n`, {
+      mode: 0o750,
+    });
+    chownSync(wrapperScript, ROOT_UID, DEPLOY_GID);
+    chmodSync(wrapperScript, 0o750);
     await execOrThrow(`pm2 start ${ecosystemFile}`, cwd);
     await this.waitForProcess(name);
     await exec("pm2 save");
@@ -119,15 +198,12 @@ export class PM2Manager {
     await exec("pm2 save");
   }
 
-  async deleteByBranch(branch: string): Promise<void> {
+  async deleteByDeployment(deploymentId: string): Promise<void> {
     const processes = await this.list();
     for (const proc of processes) {
-      if (matchesDeployment(proc.name, branch)) await this.delete(proc.name);
+      if (matchesDeployment(proc.name, deploymentId))
+        await this.delete(proc.name);
     }
-  }
-
-  async reload(name: string): Promise<void> {
-    await execOrThrow(`pm2 reload ${name} --update-env`);
   }
 
   private async getProcessPid(name: string): Promise<number | undefined> {
@@ -172,13 +248,11 @@ export class PM2Manager {
     );
   }
 
-  async processExists(name: string): Promise<boolean> {
-    return (await exec(`pm2 describe ${name}`)).success;
-  }
-
   async list(): Promise<PM2Process[]> {
     const result = await exec("pm2 jlist");
-    if (!result.success) return [];
+    if (!result.success) {
+      throw new Error(`Failed to list PM2 processes: ${result.stderr}`);
+    }
     try {
       return JSON.parse(result.stdout).map((p: any) => ({
         name: p.name,
@@ -187,8 +261,10 @@ export class PM2Manager {
         cpu: p.monit?.cpu ?? 0,
         memory: p.monit?.memory ?? 0,
       }));
-    } catch {
-      return [];
+    } catch (error) {
+      throw new Error("PM2 returned an invalid process list.", {
+        cause: error,
+      });
     }
   }
 

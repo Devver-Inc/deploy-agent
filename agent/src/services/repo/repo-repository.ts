@@ -1,8 +1,6 @@
-export interface RepoConfig {
-  name: string;
-  baseUrl: string;
-  createdAt: string;
-}
+import type { RepoConfig } from "../../types";
+
+export type { RepoConfig } from "../../types";
 
 export interface ReposRegistry {
   [name: string]: RepoConfig;

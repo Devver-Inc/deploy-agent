@@ -6,7 +6,7 @@ import {
   isValidRepoName,
   resolvePathWithin,
 } from "../../utils/validation";
-import type { DeployFailure } from "./internal-types";
+import { DeployError } from "../../utils/deploy-error";
 
 export class DeployValidator {
   validateRequest(request: DeployRequest): void {
@@ -62,15 +62,11 @@ export class DeployValidator {
     try {
       assertSafeShellCommand(command);
     } catch (error: any) {
-      const failure: DeployFailure = {
-        code: ErrorCode.VALIDATION_ERROR,
-        message: `Unsafe command detected for service '${service}'.`,
-        logs: error?.message,
-        step,
-        stage,
-        service,
-      };
-      throw failure;
+      throw new DeployError(
+        ErrorCode.VALIDATION_ERROR,
+        `Unsafe command detected for service '${service}'.`,
+        { logs: error?.message, step, stage, service },
+      );
     }
   }
 
@@ -78,14 +74,12 @@ export class DeployValidator {
     message: string,
     logs?: string,
     service?: string,
-  ): DeployFailure {
-    return {
-      code: ErrorCode.VALIDATION_ERROR,
-      message,
+  ): DeployError {
+    return new DeployError(ErrorCode.VALIDATION_ERROR, message, {
       logs,
       step: 0,
       stage: DeployStage.VALIDATION,
       service,
-    };
+    });
   }
 }
