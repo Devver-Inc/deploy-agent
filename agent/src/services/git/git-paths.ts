@@ -10,6 +10,22 @@ export class GitPaths {
     return `${this.getDeploymentsPath(repo)}/${branch}`;
   }
 
+  getCandidateWorktreePath(
+    branch: string,
+    repo: string,
+    requestId: string,
+  ): string {
+    return `${this.getDeploymentsPath(repo)}/.releases/${safeBranch(branch)}-${requestId}`;
+  }
+
+  getBackupWorktreePath(
+    branch: string,
+    repo: string,
+    requestId: string,
+  ): string {
+    return `${this.getDeploymentsPath(repo)}/.releases/${safeBranch(branch)}-previous-${requestId}`;
+  }
+
   getDeploymentId(branch: string, repo: string): string {
     return `${repo}-${safeBranch(branch)}`;
   }

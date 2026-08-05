@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { deployService } from "../services/deploy-service";
+import { deployPipeline } from "../pipeline/pipeline";
 import {
   ErrorCode,
   OverlayCommentPermission,
@@ -13,7 +13,15 @@ import {
   REPO_NAME_PATTERN,
 } from "../utils/validation";
 import { toApiError } from "../utils/api-error";
-import { pm2Manager } from "../services/pm2-manager";
+import { deploymentAdminService } from "../services/deployment-admin-service";
+
+const serviceConfigSchema = t.Object({
+  root: t.Optional(t.String()),
+  install: t.Optional(t.String()),
+  skipInstall: t.Optional(t.Boolean()),
+  build: t.Optional(t.String()),
+  start: t.Optional(t.String()),
+});
 
 const deployBodySchema = t.Object({
   repo: t.String({ minLength: 1, pattern: REPO_NAME_PATTERN }),
@@ -26,20 +34,8 @@ const deployBodySchema = t.Object({
   }),
   service: t.Partial(
     t.Object({
-      web: t.Object({
-        root: t.Optional(t.String()),
-        install: t.Optional(t.String()),
-        skipInstall: t.Optional(t.Boolean()),
-        build: t.Optional(t.String()),
-        start: t.Optional(t.String()),
-      }),
-      api: t.Object({
-        root: t.Optional(t.String()),
-        install: t.Optional(t.String()),
-        skipInstall: t.Optional(t.Boolean()),
-        build: t.Optional(t.String()),
-        start: t.Optional(t.String()),
-      }),
+      web: serviceConfigSchema,
+      api: serviceConfigSchema,
     }),
   ),
   env: t.Optional(t.Record(t.String(), t.String())),
@@ -66,7 +62,7 @@ function unexpectedDeployError(error: unknown): ErrorResponse {
 }
 
 export const deploymentRoutes = new Elysia()
-  .post("/deploy", async ({ body }) => deployService.deploy(body), {
+  .post("/deploy", async ({ body }) => deployPipeline.deploy(body), {
     body: deployBodySchema,
   })
 
@@ -90,7 +86,7 @@ export const deploymentRoutes = new Elysia()
         enqueue(sseEvent("phase", { phase, durationMs }));
       };
 
-      void deployService
+      void deployPipeline
         .deploy(body, onPhaseComplete)
         .then((result) => {
           enqueue(sseEvent(result.success ? "complete" : "error", result));
@@ -114,7 +110,7 @@ export const deploymentRoutes = new Elysia()
 
   .get(
     "/deployments",
-    async ({ query }) => deployService.listDeployments(query),
+    async ({ query }) => deploymentAdminService.listDeployments(query),
     {
       query: t.Object({ repo: t.Optional(t.String({ minLength: 1 })) }),
     },
@@ -124,7 +120,7 @@ export const deploymentRoutes = new Elysia()
     "/deployments/:deploymentId",
     async ({ params, set }) => {
       try {
-        await deployService.removeDeployment(params.deploymentId);
+        await deploymentAdminService.removeDeployment(params.deploymentId);
         return {
           success: true as const,
           deploymentId: params.deploymentId,
@@ -149,7 +145,7 @@ export const deploymentRoutes = new Elysia()
     "/pm2/start",
     async ({ body, set }) => {
       try {
-        await pm2Manager.startExisting(body.name);
+        await deploymentAdminService.startProcess(body.name);
         return {
           success: true as const,
           name: body.name,
@@ -175,7 +171,7 @@ export const deploymentRoutes = new Elysia()
     "/pm2/stop",
     async ({ body, set }) => {
       try {
-        await pm2Manager.stop(body.name);
+        await deploymentAdminService.stopProcess(body.name);
         return {
           success: true as const,
           name: body.name,
@@ -201,7 +197,7 @@ export const deploymentRoutes = new Elysia()
     "/pm2/restart",
     async ({ body, set }) => {
       try {
-        await pm2Manager.restart(body.name);
+        await deploymentAdminService.restartProcess(body.name);
         return {
           success: true as const,
           name: body.name,

@@ -1,5 +1,10 @@
-import { DeployStage, ErrorCode, type ErrorResponse } from "../../types";
-import type { DeployFailure, RollbackResult } from "./internal-types";
+import {
+  DeployStage,
+  ErrorCode,
+  type DeployFailure,
+  type ErrorResponse,
+  type RollbackResult,
+} from "../../types";
 import { DeployError } from "../../utils/deploy-error";
 
 export class DeployErrorFactory {
@@ -16,18 +21,6 @@ export class DeployErrorFactory {
     }
 
     const message = error instanceof Error ? error.message : String(error);
-    if (
-      message.includes("Dependency cycle detected") ||
-      message.includes("depends on unknown service")
-    ) {
-      return {
-        code: ErrorCode.VALIDATION_ERROR,
-        message,
-        stage: DeployStage.VALIDATION,
-        step: 0,
-      };
-    }
-
     return {
       code: ErrorCode.DEPLOY_ERROR,
       message,

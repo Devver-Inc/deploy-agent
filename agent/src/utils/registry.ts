@@ -10,9 +10,9 @@ export interface KeyValueRepository<T extends Record<string, unknown>> {
   has(key: string): boolean;
 }
 
-export class JsonRegistry<
-  T extends Record<string, unknown>,
-> implements KeyValueRepository<T> {
+export class JsonRegistry<T extends Record<string, unknown>>
+  implements KeyValueRepository<T>
+{
   private data: T;
 
   constructor(
@@ -26,15 +26,17 @@ export class JsonRegistry<
     if (!existsSync(this.filePath)) return { ...this.defaultValue };
     try {
       return JSON.parse(readFileSync(this.filePath, "utf-8"));
-    } catch {
-      return { ...this.defaultValue };
+    } catch (error) {
+      throw new Error(`Failed to load JSON registry '${this.filePath}'.`, {
+        cause: error,
+      });
     }
   }
 
   save(): void {
     ensureDir(dirname(this.filePath));
     const tmpPath = `${this.filePath}.tmp`;
-    writeFileSync(tmpPath, JSON.stringify(this.data, null, 2));
+    writeFileSync(tmpPath, JSON.stringify(this.data, null, 2), { mode: 0o600 });
     renameSync(tmpPath, this.filePath);
   }
 

@@ -1,7 +1,8 @@
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 import { pm2Manager } from "../services/pm2-manager";
 import { toApiError } from "../utils/api-error";
 import type { LogsResponse } from "../types";
+import { PM2_PROCESS_PATTERN } from "../utils/validation";
 
 export const logRoutes = new Elysia().get(
   "/logs/:deploymentId",
@@ -19,5 +20,10 @@ export const logRoutes = new Elysia().get(
       set.status = normalized.status;
       return normalized.body;
     }
+  },
+  {
+    params: t.Object({
+      deploymentId: t.String({ minLength: 1, pattern: PM2_PROCESS_PATTERN }),
+    }),
   },
 );

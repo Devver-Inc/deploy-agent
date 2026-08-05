@@ -7,8 +7,16 @@ services:
     volumes:
       - devver-app:/app
       - devver-pm2:/root/.pm2
+      # Persistent package manager caches — survive pod restarts so first deploys are fast
+      - devver-npm-cache:/app/caches/npm
+      - devver-bun-cache:/app/caches/bun
+      - devver-pip-cache:/app/caches/pip
+      - devver-gem-cache:/app/caches/gem
+      - devver-go-cache:/app/caches/go
     environment:
       - DEVVER_SECRET
+      - DEVVER_PROJECT_ID
+      - DEVVER_GIT_AUTH_URL
       - NODE_ENV
       - DEVVER_WIDGET_URL
       - DEVVER_MONGO_CONNECTION_STRING
@@ -16,3 +24,8 @@ services:
 volumes:
   devver-app:
   devver-pm2:
+  devver-npm-cache:
+  devver-bun-cache:
+  devver-pip-cache:
+  devver-gem-cache:
+  devver-go-cache:

@@ -50,6 +50,7 @@ export function resolvePathWithin(
 export function assertSafeShellCommand(command: string): void {
   const blockedPatterns = [
     /&&/,
+    /&(?!&)/,
     /\|\|/,
     /(?<!\|)\|(?!\|)/,
     /;/,
@@ -59,8 +60,6 @@ export function assertSafeShellCommand(command: string): void {
     /\r|\n/,
   ];
   if (blockedPatterns.some((pattern) => pattern.test(command))) {
-    throw new Error(
-      "Command contains potentially unsafe shell tokens. Set DEVVER_ALLOW_UNSAFE_COMMANDS=true to bypass.",
-    );
+    throw new Error("Command contains unsupported shell control operators.");
   }
 }

@@ -29,6 +29,7 @@ export class RepoManager {
 
     const repoPath = this.getRepoPath(name);
     if (existsSync(repoPath)) throw new Error(`Repo '${name}' already exists`);
+    const normalizedBaseUrl = this.normalizeBaseUrl(baseUrl);
 
     ensureDir(repoPath);
     await execOrThrow("git init --bare", repoPath);
@@ -44,7 +45,7 @@ export class RepoManager {
 
     this.repository.set(name, {
       name,
-      baseUrl,
+      baseUrl: normalizedBaseUrl,
       createdAt: new Date().toISOString(),
     });
   }
@@ -77,6 +78,14 @@ export class RepoManager {
     const config = this.repository.get(name);
     const baseUrl = config?.baseUrl ?? "http://localhost";
     return `${baseUrl}/git/${name}.git`;
+  }
+
+  private normalizeBaseUrl(baseUrl: string): string {
+    const parsed = new URL(baseUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("Repository base URL must use HTTP or HTTPS.");
+    }
+    return baseUrl.replace(/\/+$/, "");
   }
 }
 

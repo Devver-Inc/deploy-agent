@@ -45,6 +45,10 @@ export interface CreateRepoRequest {
   baseUrl: string;
 }
 
+export interface RepoConfig extends CreateRepoRequest {
+  createdAt: string;
+}
+
 export type ServiceName = "web" | "api";
 
 export enum OverlayCommentPermission {
@@ -104,6 +108,40 @@ export interface NginxConfigSnapshot {
   content?: string;
 }
 
+export interface FileSnapshot {
+  path: string;
+  exists: boolean;
+  content?: string;
+}
+
+export interface ProcessSnapshot {
+  name: string;
+  status: PM2ProcessStatus;
+  ecosystemFile: FileSnapshot;
+  wrapperScript: FileSnapshot;
+}
+
+export interface RollbackSnapshot {
+  previousEntry?: PortRegistryEntry;
+  nginxConfig: NginxConfigSnapshot;
+  processes: ProcessSnapshot[];
+}
+
+export interface RollbackResult {
+  attempted: boolean;
+  success: boolean;
+  message?: string;
+}
+
+export interface DeployFailure {
+  code: ErrorCode;
+  message: string;
+  logs?: string;
+  step?: number;
+  stage?: DeployStage;
+  service?: string;
+}
+
 export interface DeployBenchmark {
   validation?: number;
   snapshot?: number;
@@ -129,11 +167,7 @@ export interface ErrorResponse {
     step?: number;
     stage?: DeployStage;
     service?: string;
-    rollback?: {
-      attempted: boolean;
-      success: boolean;
-      message?: string;
-    };
+    rollback?: RollbackResult;
   };
   duration: number;
 }
