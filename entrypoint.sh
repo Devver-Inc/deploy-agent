@@ -7,9 +7,6 @@ mkdir -p /app/data/pm2 /app/repos /app/deployments /app/nginx/conf.d \
          /app/caches/npm /app/caches/bun /app/caches/pip \
          /app/caches/gem /app/caches/go
 
-# Existing /app volumes predate the runtime defaults shipped in the image.
-[ -f /app/.tool-versions ] || cp /etc/asdf-default-tool-versions /app/.tool-versions
-
 mkdir -p /app/caches/go/build /app/caches/go/pkg/mod
 
 # Within /app, workloads can write only deployments and package caches.

@@ -1,6 +1,17 @@
+# ─── Prebuilt runtime stages ─────────────────────────────────────
+# Pinned to the same versions previously compiled by asdf. Copying the
+# already-built runtime from each official Alpine (musl) image avoids
+# compiling Python/Ruby/Go from source, which is what made the build slow.
+FROM python:3.12.7-alpine AS python-build
+FROM ruby:3.3.5-alpine AS ruby-build
+FROM golang:1.23.2-alpine AS golang-build
+
 FROM oven/bun:1-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0
 
 # ─── System packages ─────────────────────────────────────────────
+# build-base/-dev headers are kept: user projects (pip/gem/npm) may still
+# need to compile native extensions during install, even though we no
+# longer compile the runtimes themselves.
 RUN apk add --no-cache \
     git \
     git-daemon \
@@ -26,37 +37,31 @@ RUN apk add --no-cache \
     xz-dev \
     tar
 
-# ─── asdf (multi-runtime version manager) ────────────────────────
-ARG ASDF_VERSION=v0.15.0
-ENV ASDF_DIR=/opt/asdf
-ENV ASDF_DATA_DIR=/opt/asdf-data
-ENV PATH="${ASDF_DIR}/bin:${ASDF_DATA_DIR}/shims:${PATH}"
+# ─── Python (copied from official image, no source compile) ─────
+COPY --from=python-build /usr/local/bin/python3.12 /usr/local/bin/python3.12
+COPY --from=python-build /usr/local/lib/python3.12 /usr/local/lib/python3.12
+COPY --from=python-build /usr/local/lib/libpython3.12* /usr/local/lib/
+COPY --from=python-build /usr/local/include/python3.12 /usr/local/include/python3.12
+RUN ln -sf /usr/local/bin/python3.12 /usr/local/bin/python3 && \
+    ln -sf /usr/local/bin/python3.12 /usr/local/bin/python && \
+    /usr/local/bin/python3 -m ensurepip --upgrade && \
+    /usr/local/bin/python3 -m pip install --no-cache-dir --upgrade pip poetry==1.8.5
 
-RUN git clone --depth=1 --branch "${ASDF_VERSION}" \
-    https://github.com/asdf-vm/asdf.git "${ASDF_DIR}"
+# ─── Ruby (copied from official image, no source compile) ───────
+COPY --from=ruby-build /usr/local/bin/ruby /usr/local/bin/ruby
+COPY --from=ruby-build /usr/local/bin/gem /usr/local/bin/gem
+COPY --from=ruby-build /usr/local/bin/erb /usr/local/bin/erb
+COPY --from=ruby-build /usr/local/bin/irb /usr/local/bin/irb
+COPY --from=ruby-build /usr/local/bin/rdoc /usr/local/bin/rdoc
+COPY --from=ruby-build /usr/local/bin/ri /usr/local/bin/ri
+COPY --from=ruby-build /usr/local/lib/ruby /usr/local/lib/ruby
+COPY --from=ruby-build /usr/local/lib/libruby* /usr/local/lib/
+COPY --from=ruby-build /usr/local/include/ruby-3.3.0 /usr/local/include/ruby-3.3.0
+RUN gem install bundler -v 2.5.23 --no-document
 
-# ─── Runtime plugins + base versions ────────────────────────────
-# Node.js uses Alpine's native musl build. asdf manages the other runtimes.
-RUN asdf plugin add nodejs && \
-    asdf plugin add python && \
-    asdf plugin add ruby && \
-    asdf plugin add golang
-
-# Pre-install commonly needed runtimes so first deploys don't compile from source.
-# These are pinned to keep the image reproducible.
-RUN asdf global nodejs system
-RUN asdf install python 3.12.7 && asdf global python 3.12.7
-RUN asdf install ruby 3.3.5 && asdf global ruby 3.3.5
-RUN asdf install golang 1.23.2 && asdf global golang 1.23.2
-RUN pip install --no-cache-dir poetry==1.8.5 && \
-    gem install bundler -v 2.5.23 --no-document && \
-    asdf reshim && \
-    chmod -R a+rX "${ASDF_DIR}" "${ASDF_DATA_DIR}"
-
-# Defaults inherited by every worktree under /app; project .tool-versions files override them.
-RUN mkdir -p /app && \
-    printf 'nodejs system\npython 3.12.7\nruby 3.3.5\ngolang 1.23.2\n' > /etc/asdf-default-tool-versions && \
-    cp /etc/asdf-default-tool-versions /app/.tool-versions
+# ─── Go (copied from official image, no source compile) ─────────
+COPY --from=golang-build /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 # ─── Global JS tooling ───────────────────────────────────────────
 RUN npm install -g pm2@7.0.3 vite@8.2.0
