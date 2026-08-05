@@ -34,7 +34,8 @@ export class NginxStage implements DeployStageHandler {
           service: entry.serviceName,
           port: entry.port,
           nodeFrontend:
-            entry.serviceName === "web" && ctx.runtimeLanguage === "node",
+            entry.serviceName === "web" &&
+            ctx.runtime?.proxyProfile === "node-frontend",
         },
         ctx.projectId,
         ctx.organizationId,

@@ -2,9 +2,11 @@ import { Elysia, t } from "elysia";
 import { repoRoutes } from "./routes/repos";
 import { deploymentRoutes } from "./routes/deployments";
 import { logRoutes } from "./routes/logs";
-import { mongoRoutes } from "./routes/mongo";
+import { databaseRoutes } from "./routes/databases";
 import { gitAuthRoutes } from "./middleware/git-auth";
 import { timingSafeEqual } from "crypto";
+import { ApplicationError } from "./errors/application-error";
+import { toApiError } from "./utils/api-error";
 
 const DEVVER_SECRET = process.env.DEVVER_SECRET;
 if (!DEVVER_SECRET) {
@@ -33,6 +35,15 @@ const app = new Elysia()
           message: error.message,
         },
       };
+    }
+
+    if (error instanceof ApplicationError) {
+      const normalized = toApiError(error, {
+        code: "REQUEST_FAILED",
+        message: "Request failed.",
+      });
+      set.status = normalized.status;
+      return normalized.body;
     }
   })
 
@@ -74,7 +85,7 @@ const app = new Elysia()
   .use(repoRoutes)
   .use(deploymentRoutes)
   .use(logRoutes)
-  .use(mongoRoutes)
+  .use(databaseRoutes)
 
   .listen(PORT);
 

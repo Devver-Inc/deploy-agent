@@ -7,7 +7,9 @@ export const config = {
     reposFile: "/app/data/repos.json",
     nginxConfDir: "/app/nginx/conf.d",
   },
-  mongo: {
-    connectionString: process.env.DEVVER_MONGO_CONNECTION_STRING,
+  databases: {
+    mongo: process.env.DEVVER_MONGO_CONNECTION_STRING,
+    postgres: process.env.DEVVER_POSTGRES_CONNECTION_STRING,
+    redis: process.env.DEVVER_REDIS_CONNECTION_STRING,
   },
 } as const;

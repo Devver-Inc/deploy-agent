@@ -1,3 +1,8 @@
+import {
+  ApplicationError,
+  ApplicationFailureKind,
+} from "../errors/application-error";
+
 export interface ApiErrorPayload {
   success: false;
   error: {
@@ -7,44 +12,31 @@ export interface ApiErrorPayload {
   };
 }
 
-export class ApiError extends Error {
-  constructor(
-    public readonly code: string,
-    public readonly status: number,
-    message: string,
-    public readonly details?: string,
-  ) {
-    super(message);
-  }
-}
-
 interface ErrorFallback {
   code: string;
   message: string;
   status?: number;
 }
 
-function inferStatusFromMessage(message: string): number {
-  const lower = message.toLowerCase();
-  if (lower.includes("already exists") || lower.includes("conflict"))
-    return 409;
-  if (lower.includes("not found") || lower.includes("does not exist"))
-    return 404;
-  if (lower.includes("invalid") || lower.includes("unsafe")) return 400;
-  return 500;
-}
+const HTTP_STATUS_BY_FAILURE: Record<ApplicationFailureKind, number> = {
+  [ApplicationFailureKind.VALIDATION]: 400,
+  [ApplicationFailureKind.NOT_FOUND]: 404,
+  [ApplicationFailureKind.CONFLICT]: 409,
+  [ApplicationFailureKind.UPSTREAM]: 502,
+  [ApplicationFailureKind.CONFIGURATION]: 500,
+};
 
 export function toApiError(
   error: unknown,
   fallback: ErrorFallback,
 ): { status: number; body: ApiErrorPayload } {
-  if (error instanceof ApiError) {
+  if (error instanceof ApplicationError) {
     return {
-      status: error.status,
+      status: HTTP_STATUS_BY_FAILURE[error.kind],
       body: {
         success: false,
         error: {
-          code: error.code,
+          code: error.code ?? fallback.code,
           message: error.message,
           details: error.details,
         },
@@ -53,7 +45,7 @@ export function toApiError(
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  const status = fallback.status ?? inferStatusFromMessage(message);
+  const status = fallback.status ?? 500;
 
   return {
     status,

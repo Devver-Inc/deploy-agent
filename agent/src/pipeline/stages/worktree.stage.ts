@@ -4,7 +4,7 @@ import type { ServiceRegistry } from "../contracts";
 import { DeployError } from "../../utils/deploy-error";
 import { ErrorCode, DeployStage, type DeployRequest } from "../../types";
 import { resolvePathWithin } from "../../utils/validation";
-import { detectRuntime } from "../runtime-detector";
+import { resolveRuntime } from "../runtime-strategy";
 
 /**
  * Creates or updates the git worktree for the target branch.
@@ -42,18 +42,15 @@ export class WorktreeStage implements DeployStageHandler {
         serviceConfig.root,
       );
 
-      const detected = detectRuntime(ctx.servicePath);
-      if (detected) {
-        ctx.runtimeLanguage = detected.language;
-        ctx.runtimePackageManager = detected.packageManager;
-        ctx.runtimeNeedsCliPort = detected.needsCliPort;
-        serviceConfig.install ??= detected.installCmd;
-        serviceConfig.start ??= detected.startCmd;
+      ctx.runtime = resolveRuntime(ctx.servicePath) ?? undefined;
+      if (ctx.runtime) {
+        serviceConfig.install ??= ctx.runtime.installCommand;
+        serviceConfig.start ??= ctx.runtime.startCommand;
       }
 
       if (!serviceConfig.start) {
-        const detectedRuntime = detected
-          ? `Detected '${detected.language}' runtime, but`
+        const detectedRuntime = ctx.runtime
+          ? `Detected '${ctx.runtime.id}' runtime, but`
           : "";
         throw new DeployError(
           ErrorCode.VALIDATION_ERROR,

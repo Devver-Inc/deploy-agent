@@ -47,7 +47,9 @@ bun run dev   # watch mode
 | `DEVVER_SECRET`     | **Yes**  | —            | API authentication secret (`x-devver-secret` header) |
 | `DEVVER_DATA_DIR`   | No       | `/app`       | Base directory for repos, deployments and data       |
 | `DEVVER_WIDGET_URL` | No       | CDN jsdelivr | Devver overlay script URL                            |
-| `DEVVER_MONGO_CONNECTION_STRING` | Mongo routes: **Yes** | — | Full Mongo connection string used by `/mongo/databases` |
+| `DEVVER_MONGO_CONNECTION_STRING` | Mongo catalog: **Yes** | — | Mongo connection string used by `/databases/mongo` |
+| `DEVVER_POSTGRES_CONNECTION_STRING` | PostgreSQL catalog: **Yes** | — | PostgreSQL connection string used by `/databases/postgres` |
+| `DEVVER_REDIS_CONNECTION_STRING` | Redis catalog: **Yes** | — | Redis connection string used by `/databases/redis` |
 | `NODE_ENV`          | No       | —            | `production` for deploys                             |
 | `PORT`              | No       | `8080`       | Deploy Agent port                                    |
 
@@ -96,7 +98,7 @@ GET /health
 | `POST`   | `/deploy`                    | Run a deployment            |
 | `GET`    | `/deployments`               | List deployments (`?repo=`) |
 | `DELETE` | `/deployments/:deploymentId` | Remove a deployment         |
-| `GET`    | `/mongo/databases`           | List Mongo databases        |
+| `GET`    | `/databases/:engine`         | List Mongo, PostgreSQL or Redis databases |
 
 **POST /deploy** body:
 
@@ -143,13 +145,13 @@ Body: `{ "name": "pm2-process" }`
 GET /logs/:deploymentId
 ```
 
-### Mongo
+### Databases
 
 ```
-GET /mongo/databases
+GET /databases/:engine
 ```
 
-Returns:
+Supported engines are `mongo`, `postgres`, and `redis`. Mongo returns:
 
 ```json
 [
@@ -161,7 +163,9 @@ Returns:
 ]
 ```
 
-The agent uses `DEVVER_MONGO_CONNECTION_STRING` directly. A typical value is:
+The legacy `/mongo/databases` route remains available during client migration.
+
+The agent uses the matching `DEVVER_*_CONNECTION_STRING` directly. A typical Mongo value is:
 
 ```txt
 mongodb://root:senha@test-overlay-test-db-mongo:27017/admin?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
