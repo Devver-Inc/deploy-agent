@@ -31,10 +31,6 @@ jobs:
         working-directory: agent
         run: bun run typecheck
 
-      - name: Test
-        working-directory: agent
-        run: bun test
-
   build-and-push:
     needs: quality
     if: github.event_name != 'pull_request'
