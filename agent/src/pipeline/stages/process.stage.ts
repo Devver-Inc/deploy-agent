@@ -60,9 +60,7 @@ export class ProcessStage implements DeployStageHandler {
     const rawCommand = config.start!;
     this.validateCmd(rawCommand, serviceName, 4, DeployStage.PROCESS);
     const command =
-      serviceName === "web"
-        ? (ctx.runtime?.prepareStart(rawCommand, port) ?? rawCommand)
-        : rawCommand;
+      ctx.runtime?.prepareStart(rawCommand, port, servicePath) ?? rawCommand;
 
     // Start PM2 process
     try {

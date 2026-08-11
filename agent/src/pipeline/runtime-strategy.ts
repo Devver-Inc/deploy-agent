@@ -11,7 +11,7 @@ export interface RuntimePlan {
   readonly beforeInstallCommands: readonly string[];
   readonly proxyProfile: RuntimeProxyProfile;
   environment(servicePath: string, phase: RuntimePhase): Record<string, string>;
-  prepareStart(command: string, port: number): string;
+  prepareStart(command: string, port: number, servicePath: string): string;
 }
 
 interface RuntimeDetectionContext {
@@ -34,7 +34,11 @@ interface RuntimePlanOptions {
     servicePath: string,
     phase: RuntimePhase,
   ) => Record<string, string>;
-  prepareStart?: (command: string, port: number) => string;
+  prepareStart?: (
+    command: string,
+    port: number,
+    servicePath: string,
+  ) => string;
 }
 
 function createRuntimePlan({
@@ -172,7 +176,24 @@ function createPipPlan(
     startCommand: context.procfileStart,
     beforeInstallCommands: ["python -m venv .venv"],
     environment: pythonEnvironment,
+    prepareStart: preparePythonStart,
   });
+}
+
+function preparePythonStart(
+  command: string,
+  _port: number,
+  servicePath: string,
+): string {
+  const match = command.match(/^([A-Za-z0-9._-]+)(.*)$/);
+  if (
+    !match ||
+    /^python(?:3(?:\.\d+)?)?$/.test(match[1]) ||
+    !existsSync(join(servicePath, ".venv", "bin", match[1]))
+  ) {
+    return command;
+  }
+  return `python "$VIRTUAL_ENV/bin/${match[1]}"${match[2]}`;
 }
 
 // Order is part of the Interface: specific lockfiles win before generic manifests.
@@ -210,6 +231,7 @@ const runtimeStrategies: readonly RuntimeStrategy[] = [
         installCommand: "poetry install --only main --no-interaction",
         startCommand: context.procfileStart,
         environment: pythonEnvironment,
+        prepareStart: preparePythonStart,
       }),
   },
   {
