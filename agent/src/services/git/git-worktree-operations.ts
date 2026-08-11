@@ -15,6 +15,7 @@ export class GitWorktreeOperations {
       repoPath,
     );
     await execOrThrow(`chown -R deploy:deploy "${candidatePath}"`);
+    await execOrThrow(`chmod -R u+rwX "${candidatePath}"`);
   }
 
   async promoteCandidateWorktree(
