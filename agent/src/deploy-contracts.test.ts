@@ -47,11 +47,14 @@ test("request values cannot break out of the generated nginx config", () => {
 });
 
 test("preview hosts are DNS-safe and unique per service", () => {
-  expect(publicHost("app-feat-x", "p.dev")).toBe("app-feat-x.p.dev");
-  expect(publicHost("app.api-feat-x", "p.dev")).toBe("app--api-feat-x.p.dev");
-  const long = publicHost(`app-${"b".repeat(80)}`, "p.dev");
-  expect(long.split(".")[0]!.length).toBeLessThanOrEqual(63);
-  expect(() => publicHost("app-main", undefined)).toThrow();
+  const id = "65f0c0ffee00000000000abc";
+  expect(publicHost("app-feat-x", "p.dev", id)).toBe(`app-feat-x--${id}.p.dev`);
+  expect(publicHost("app.api-feat-x", "p.dev", id)).toBe(`app--api-feat-x--${id}.p.dev`);
+  // Truncation must keep the project suffix: Traefik routes on it.
+  const long = publicHost(`app-${"b".repeat(80)}`, "p.dev", id).split(".")[0]!;
+  expect(long.length).toBeLessThanOrEqual(63);
+  expect(long.endsWith(`--${id}`)).toBe(true);
+  expect(() => publicHost("app-main", undefined, id)).toThrow();
 });
 
 test("deployment match is anchored on the whole process name", () => {

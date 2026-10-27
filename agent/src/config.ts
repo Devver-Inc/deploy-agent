@@ -8,6 +8,7 @@ export const config = {
     nginxSitesDir: "/app/nginx/sites.d",
   },
   previewDomain: process.env.DEVVER_PREVIEW_DOMAIN?.toLowerCase(),
+  projectId: process.env.DEVVER_PROJECT_ID,
   databases: {
     mongo: process.env.DEVVER_MONGO_CONNECTION_STRING,
     postgres: process.env.DEVVER_POSTGRES_CONNECTION_STRING,

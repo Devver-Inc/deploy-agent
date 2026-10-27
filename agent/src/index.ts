@@ -13,8 +13,10 @@ const DEVVER_SECRET = process.env.DEVVER_SECRET;
 if (!DEVVER_SECRET) {
   throw new Error("DEVVER_SECRET environment variable is required");
 }
-if (!config.previewDomain) {
-  throw new Error("DEVVER_PREVIEW_DOMAIN environment variable is required");
+if (!config.previewDomain || !config.projectId) {
+  throw new Error(
+    "DEVVER_PREVIEW_DOMAIN and DEVVER_PROJECT_ID environment variables are required",
+  );
 }
 const EXPECTED_DEVVER_SECRET = DEVVER_SECRET;
 const PORT = process.env.PORT ?? 8080;

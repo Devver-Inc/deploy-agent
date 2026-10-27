@@ -194,13 +194,14 @@ Each request deploys one service. `web` and `api` of the same branch are indepen
 
 | Service | `deploymentId`        | URL                                      |
 | ------- | --------------------- | ---------------------------------------- |
-| `web`   | `<repo>-<branch>`     | `<repo>-<branch>.<DEVVER_PREVIEW_DOMAIN>`  |
-| `api`   | `<repo>.api-<branch>` | `<repo>--api-<branch>.<DEVVER_PREVIEW_DOMAIN>` |
+| `web`   | `<repo>-<branch>`     | `<repo>-<branch>--<projectId>.<DEVVER_PREVIEW_DOMAIN>`  |
+| `api`   | `<repo>.api-<branch>` | `<repo>--api-<branch>--<projectId>.<DEVVER_PREVIEW_DOMAIN>` |
 
 Each deployment runs at `/` on its own host, so client-side routing, the app's own `/api/*` routes,
-CSS/fonts and dev-server HMR work unchanged. The agent refuses to start without `DEVVER_PREVIEW_DOMAIN`.
-Infra: a wildcard DNS record and TLS certificate for `*.preview.example.com`,
-routed to the agent's port 80 with the `Host` header preserved.
+CSS/fonts and dev-server HMR work unchanged. The agent refuses to start without `DEVVER_PREVIEW_DOMAIN`
+and `DEVVER_PROJECT_ID`. Infra: one wildcard DNS record and TLS certificate for `*.preview.example.com`
+shared by all projects; each project's Traefik route matches
+``HostRegexp(`^.+--<projectId>\.preview\.example\.com$`)`` and sends it to the agent's port 80.
 
 **Dev mode:** for a Node `web` service sent without `build` and `start`, the agent skips the build
 and runs the app's `dev` script (no `NODE_ENV=production`). Send `build`/`start` to deploy a production build.
