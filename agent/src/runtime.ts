@@ -185,24 +185,7 @@ function createPipPlan(
     startCommand: context.procfileStart,
     beforeInstallCommands: ["python -m venv .venv"],
     environment: pythonEnvironment,
-    prepareStart: preparePythonStart,
   });
-}
-
-function preparePythonStart(
-  command: string,
-  _port: number,
-  servicePath: string,
-): string {
-  const match = command.match(/^([A-Za-z0-9._-]+)(.*)$/);
-  if (
-    !match ||
-    /^python(?:3(?:\.\d+)?)?$/.test(match[1]) ||
-    !existsSync(join(servicePath, ".venv", "bin", match[1]))
-  ) {
-    return command;
-  }
-  return `python "$VIRTUAL_ENV/bin/${match[1]}"${match[2]}`;
 }
 
 // Order is part of the Interface: specific lockfiles win before generic manifests.
@@ -240,8 +223,7 @@ const runtimeStrategies: readonly RuntimeStrategy[] = [
         installCommand: "poetry install --only main --no-interaction",
         startCommand: context.procfileStart,
         environment: pythonEnvironment,
-        prepareStart: preparePythonStart,
-      }),
+          }),
   },
   {
     matches: ({ servicePath }) => hasFile(servicePath, "requirements.txt"),

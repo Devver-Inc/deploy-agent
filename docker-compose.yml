@@ -6,21 +6,18 @@ services:
       - "3080:80"
     volumes:
       - devver-app:/app
-      - devver-pm2:/root/.pm2
       # Caches stay on devver-app: separate volumes break bun's hardlinks (5x slower install).
     environment:
       - DEVVER_SECRET
       - DEVVER_PROJECT_ID
-      - DEVVER_GIT_AUTH_URL
+      - DEVVER_ORGANIZATION_ID
+      - DEVVER_BACKEND_URL
       - DEVVER_GIT_SSH_HOST
       - DEVVER_GIT_GATEWAY_PUBLIC_KEY
       - DEVVER_PREVIEW_DOMAIN
       - NODE_ENV
       - DEVVER_WIDGET_URL
       - DEVVER_MONGO_CONNECTION_STRING
-      - DEVVER_POSTGRES_CONNECTION_STRING
-      - DEVVER_REDIS_CONNECTION_STRING
 
 volumes:
   devver-app:
-  devver-pm2:
