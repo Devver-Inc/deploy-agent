@@ -1,17 +1,27 @@
 import { exec, execOrThrow } from "../utils/exec";
+import { AsyncMutex } from "../utils/async-mutex";
 import { NginxConfigBuilder } from "./nginx/nginx-config-builder";
+import { publicAddress } from "./nginx/public-address";
 import { NginxConfigRepository } from "./nginx/nginx-config-repository";
+import { config } from "../config";
 import type { OverlayAccessControl, NginxConfigSnapshot } from "../types";
 
 export interface ServiceRoute {
   service: string;
   port: number;
   nodeFrontend?: boolean;
+  release?: string;
 }
 
 export class NginxManager {
   private builder = new NginxConfigBuilder();
-  private repository = new NginxConfigRepository();
+  private locations = new NginxConfigRepository(config.paths.nginxConfDir);
+  private sites = new NginxConfigRepository(config.paths.nginxSitesDir);
+  private mutex = new AsyncMutex();
+
+  private get repository(): NginxConfigRepository {
+    return config.previewDomain ? this.sites : this.locations;
+  }
 
   async writeConfig(
     deploymentId: string,
@@ -22,27 +32,42 @@ export class NginxManager {
     organizationId?: string,
     overlayAccessControl?: OverlayAccessControl,
   ): Promise<void> {
-    const config = this.builder.build(
-      repo,
-      branch,
-      route,
-      overlayAccessControl,
-      projectId,
-      organizationId,
-    );
-    this.repository.write(deploymentId, config);
+    const { host } = publicAddress(deploymentId, repo, branch, route.service);
+    const content = host
+      ? this.builder.buildSite(
+          host,
+          repo,
+          branch,
+          route,
+          overlayAccessControl,
+          projectId,
+          organizationId,
+        )
+      : this.builder.build(
+          repo,
+          branch,
+          route,
+          overlayAccessControl,
+          projectId,
+          organizationId,
+        );
 
-    const test = await this.testConfig();
-    if (!test.success) {
-      try {
-        this.repository.remove(deploymentId);
-      } catch {}
-      throw new Error(`Nginx Config Invalid:\n${test.logs}`);
-    }
+    await this.mutex.run(async () => {
+      this.repository.write(deploymentId, content);
+
+      const test = await this.testConfig();
+      if (!test.success) {
+        try {
+          this.repository.remove(deploymentId);
+        } catch {}
+        throw new Error(`Nginx Config Invalid:\n${test.logs}`);
+      }
+    });
   }
 
   async removeConfig(deploymentId: string): Promise<void> {
-    this.repository.remove(deploymentId);
+    this.locations.remove(deploymentId);
+    this.sites.remove(deploymentId);
   }
 
   getConfigSnapshot(deploymentId: string): NginxConfigSnapshot {

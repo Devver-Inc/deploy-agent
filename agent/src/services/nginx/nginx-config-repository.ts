@@ -1,19 +1,20 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { ensureDir } from "../../utils/fs";
 import type { NginxConfigSnapshot } from "../../types";
-import { config } from "../../config";
 import { isValidPm2ProcessName } from "../../utils/validation";
 
 export class NginxConfigRepository {
+  constructor(private readonly dir: string) {}
+
   getConfigPath(deploymentId: string): string {
     if (!isValidPm2ProcessName(deploymentId)) {
       throw new Error("Invalid deployment id.");
     }
-    return `${config.paths.nginxConfDir}/${deploymentId}.conf`;
+    return `${this.dir}/${deploymentId}.conf`;
   }
 
   write(deploymentId: string, content: string): void {
-    ensureDir(config.paths.nginxConfDir);
+    ensureDir(this.dir);
     writeFileSync(this.getConfigPath(deploymentId), content);
   }
 

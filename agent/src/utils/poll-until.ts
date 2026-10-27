@@ -7,7 +7,7 @@ export async function pollUntil(
   check: () => Promise<boolean>,
   timeoutMs: number,
   timeoutMessage: string,
-  intervalMs = 500,
+  intervalMs = 100,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {

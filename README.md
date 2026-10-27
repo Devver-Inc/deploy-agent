@@ -8,7 +8,7 @@ Containerized deploy agent that manages Git repositories, per-branch deployments
 - **Framework:** [Elysia](https://elysiajs.com)
 - **Process Manager:** PM2
 - **Reverse Proxy:** Nginx
-- **Git Backend:** git-http-backend via fcgiwrap
+- **Git Backend:** sshd + git-shell behind the git-gateway, git-http-backend via fcgiwrap (tokens)
 - **Container:** Alpine Linux (Docker)
 
 ## Prerequisites
@@ -47,6 +47,10 @@ bun run dev   # watch mode
 | `DEVVER_SECRET`     | **Yes**  | —            | API authentication secret (`x-devver-secret` header) |
 | `DEVVER_DATA_DIR`   | No       | `/app`       | Base directory for repos, deployments and data       |
 | `DEVVER_WIDGET_URL` | No       | CDN jsdelivr | Devver overlay script URL                            |
+| `DEVVER_PROJECT_ID` / `DEVVER_GIT_AUTH_URL` | Git push: **Yes** | — | Project and platform used to authorize Git tokens and SSH keys |
+| `DEVVER_GIT_SSH_HOST` | No | — | git-gateway host, e.g. `git.devver.app`; adds `sshPushUrl` to `/repos` |
+| `DEVVER_GIT_GATEWAY_PUBLIC_KEY` | No | — | The only key sshd accepts (the git-gateway's). Unset: no SSH access |
+| `DEVVER_PREVIEW_DOMAIN` | No | — | e.g. `preview.example.com`: serve each deployment on its own host (see below). Needs wildcard DNS + TLS |
 | `DEVVER_MONGO_CONNECTION_STRING` | Mongo catalog: **Yes** | — | Mongo connection string used by `/databases/mongo` |
 | `DEVVER_POSTGRES_CONNECTION_STRING` | PostgreSQL catalog: **Yes** | — | PostgreSQL connection string used by `/databases/postgres` |
 | `DEVVER_REDIS_CONNECTION_STRING` | Redis catalog: **Yes** | — | Redis connection string used by `/databases/redis` |
@@ -58,7 +62,8 @@ bun run dev   # watch mode
 ```
 /app
 ├── repos/            # Bare Git repos
-├── deployments/      # Git worktrees per deploy (branch)
+├── deployments/      # Git worktrees per deploy: <repo>/<branch> (web), <repo>.api/<branch> (api)
+├── caches/           # npm/bun/pip/gem/go caches — keep on the same volume as deployments (hardlinks)
 ├── data/
 │   ├── ports.json    # Allocated port mappings
 │   └── repos.json    # Repo registry
@@ -90,6 +95,19 @@ GET /health
 ```json
 { "name": "my-project", "baseUrl": "app.example.com" }
 ```
+
+### Git push
+
+Developers push over SSH with their own key, through the [git-gateway](../git-gateway):
+
+```bash
+git remote add devver ssh://<projectId>@git.devver.app/app/repos/my-app.git
+git push devver main
+```
+
+The gateway authorizes the developer's key with the backend and connects to this agent as `git`
+using its own key (`DEVVER_GIT_GATEWAY_PUBLIC_KEY`), so the agent's port 22 must stay inside the cluster.
+HTTP pushes with a Git token (`/git/<repo>.git`) keep working.
 
 ### Deployments
 
@@ -171,6 +189,29 @@ The agent uses the matching `DEVVER_*_CONNECTION_STRING` directly. A typical Mon
 mongodb://root:senha@test-overlay-test-db-mongo:27017/admin?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
 ```
 
+Each request deploys one service. `web` and `api` of the same branch are independent deployments
+(own worktree, port, PM2 process and Nginx config) and can be deployed in parallel:
+
+| Service | `deploymentId`        | URL                         |
+| ------- | --------------------- | --------------------------- |
+| `web`   | `<repo>-<branch>`     | `<baseUrl>/<repo>/<branch>` |
+| `api`   | `<repo>.api-<branch>` | `<baseUrl>/<repo>/<branch>/api` |
+
+With `DEVVER_PREVIEW_DOMAIN=preview.example.com` each deployment gets its own host instead
+(`web` → `app-main.preview.example.com`, `api` → `app--api-main.preview.example.com`) and runs at `/`,
+so client-side routing, the app's own `/api/*` routes, CSS/fonts and dev-server HMR work unchanged.
+Path-prefix mode can only rewrite HTML responses: anything a JS/CSS bundle requests by absolute
+path (`fetch("/api/x")`, `url(/_next/...)`, lazy chunks) still hits the shared host's root.
+Infra for preview mode: a wildcard DNS record and TLS certificate for `*.preview.example.com`,
+routed to the agent's port 80 with the `Host` header preserved.
+
+**Dev mode:** for a Node `web` service sent without `build` and `start`, the agent skips the build
+and runs the app's `dev` script (no `NODE_ENV=production`). Send `build`/`start` to deploy a production build.
+
+Deploys of different deployments run concurrently; the same deployment is serialized.
+An `api` deployment created before this scheme (stored under `<repo>-<branch>`) is removed
+automatically on the next deploy of that branch.
+
 ## Deploy Pipeline
 
 1. **Validation** — verifies repo, branch and service config
@@ -201,7 +242,7 @@ curl -X POST http://localhost:3080/repos \
   -H "x-devver-secret: dev-secret-123" \
   -d '{"name": "my-app", "baseUrl": "app.local"}'
 
-# 3. Push code via Git HTTP
+# 3. Push code via Git HTTP (SSH goes through the git-gateway)
 git remote add devver http://localhost:3080/git/my-app.git
 git push devver main
 

@@ -101,6 +101,14 @@ export class RepoManager {
     return `${baseUrl}/git/${name}.git`;
   }
 
+  getSshPushUrl(name: string): string | undefined {
+    const host = process.env.DEVVER_GIT_SSH_HOST;
+    const projectId = process.env.DEVVER_PROJECT_ID;
+    return host && projectId
+      ? `ssh://${projectId}@${host}${this.getRepoPath(name)}`
+      : undefined;
+  }
+
   private normalizeBaseUrl(baseUrl: string): string {
     let parsed: URL;
     try {

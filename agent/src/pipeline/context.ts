@@ -36,6 +36,7 @@ export interface DeployContext {
   serviceConfig?: ServiceConfig;
   servicePath?: string;
   runtime?: RuntimePlan;
+  devMode?: boolean;
 
   onPhaseComplete?: (phase: keyof DeployBenchmark, durationMs: number) => void;
 }

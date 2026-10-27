@@ -15,6 +15,8 @@ FROM oven/bun:1-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf
 RUN apk add --no-cache \
     git \
     git-daemon \
+    openssh-server \
+    openssh-keygen \
     fcgiwrap \
     spawn-fcgi \
     nginx \
@@ -79,6 +81,7 @@ RUN mkdir -p /app/repos \
     /app/deployments \
     /app/data \
     /app/nginx/conf.d \
+    /app/nginx/sites.d \
     /app/caches/npm \
     /app/caches/bun \
     /app/caches/pip \
@@ -98,8 +101,9 @@ RUN bun install --frozen-lockfile
 RUN bun run build && mv ./deploy-agent /usr/local/bin/deploy-agent
 
 # ─── User setup ─────────────────────────────────────────────────
-RUN adduser -D -s /bin/sh -h /home/git git \
-    && passwd -u git \
+# password "*": sshd pubkey login works, password login and `su git` do not.
+RUN adduser -D -s /usr/bin/git-shell -h /home/git git \
+    && echo 'git:*' | chpasswd -e \
     && addgroup -g 10001 deploy \
     && adduser -D -u 10001 -G deploy -s /bin/sh -h /home/deploy deploy
 
@@ -112,13 +116,14 @@ RUN git config --global --add safe.directory '/app/repos/*' \
     && git config --global --add safe.directory '/app/deployments/*'
 
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY sshd_config /etc/ssh/sshd_config
 
 WORKDIR /app
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 80 8080
+EXPOSE 80 22 8080
 
 HEALTHCHECK --interval=30s --timeout=3s \
     CMD curl -f http://localhost:8080/health || exit 1

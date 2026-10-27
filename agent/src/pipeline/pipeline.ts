@@ -8,6 +8,7 @@ import {
 } from "../types";
 import { matchesDeployment } from "../services/pm2-manager";
 import { lifecycleLock } from "../services/deploy/lifecycle-lock";
+import { deploymentAdminService } from "../services/deployment-admin-service";
 import { DeployValidator } from "../services/deploy/deploy-validator";
 import { DeployLogger } from "../services/deploy/deploy-logger";
 import { DeployErrorFactory } from "../services/deploy/deploy-error-factory";
@@ -71,10 +72,7 @@ export class DeployPipeline {
     const ctx: DeployContext = {
       repo: request.repo,
       branch: request.branch,
-      deploymentId: this.registry.git.getDeploymentId(
-        request.branch,
-        request.repo,
-      ),
+      deploymentId: "",
       requestId: randomUUID(),
       commit: request.commit ?? "",
       projectId: request.projectId,
@@ -89,16 +87,44 @@ export class DeployPipeline {
       onPhaseComplete,
     };
 
-    return lifecycleLock.run(async () => {
+    try {
+      this.validator.validateRequest(request);
+      this.resolveService(ctx, request);
+      ctx.deploymentId = this.registry.git.getDeploymentId(
+        request.branch,
+        request.repo,
+        ctx.serviceName!,
+      );
+      await this.removeLegacyApiDeployment(request);
+    } catch (error: unknown) {
+      return this.handleDeployError(ctx, error, startTime);
+    }
+
+    return lifecycleLock.run(ctx.deploymentId, async () => {
       try {
-        this.validator.validateRequest(request);
-        this.resolveService(ctx, request);
         await this.executeStages(ctx, request);
         return await this.buildSuccessResponse(ctx, startTime);
       } catch (error: unknown) {
         return this.handleDeployError(ctx, error, startTime);
       }
     });
+  }
+
+  /** Pre-service-scoped ids stored api under the web id; it collides with both. */
+  private async removeLegacyApiDeployment(request: DeployRequest): Promise<void> {
+    const legacyId = this.registry.git.getDeploymentId(
+      request.branch,
+      request.repo,
+      "web",
+    );
+    if (this.registry.port.get(legacyId)?.serviceName !== "api") return;
+
+    this.logger.log("info", "deploy.legacy_api_removed", {
+      repo: request.repo,
+      branch: request.branch,
+      deploymentId: legacyId,
+    });
+    await deploymentAdminService.removeDeployment(legacyId);
   }
 
   private resolveService(ctx: DeployContext, request: DeployRequest): void {
@@ -161,6 +187,7 @@ export class DeployPipeline {
         await this.registry.git.cleanupBackupWorktree(
           ctx.branch,
           ctx.repo,
+          ctx.serviceName!,
           ctx.requestId,
         );
       } catch (error: unknown) {

@@ -4,7 +4,7 @@ import type { ServiceRegistry } from "../contracts";
 import { DeployError } from "../../utils/deploy-error";
 import { pollUntil } from "../../utils/poll-until";
 import { ErrorCode, DeployStage, type DeployRequest } from "../../types";
-import { safeBranch } from "../../utils/branch";
+import { publicAddress } from "../../services/nginx/public-address";
 import { resolvePathWithin } from "../../utils/validation";
 
 /**
@@ -68,6 +68,7 @@ export class ProcessStage implements DeployStageHandler {
         await this.registry.git.promoteCandidateWorktree(
           ctx.branch,
           ctx.repo,
+          serviceName,
           ctx.requestId,
         );
       ctx.worktreePromoted = true;
@@ -76,7 +77,9 @@ export class ProcessStage implements DeployStageHandler {
         ctx.serviceConfig?.root,
       );
       ctx.servicePath = servicePath;
-      const runtimeEnv = ctx.runtime?.environment(servicePath, "run") ?? {};
+      const runtimeEnv =
+        ctx.runtime?.environment(servicePath, ctx.devMode ? "dev" : "run") ??
+        {};
 
       ctx.processTouched = true;
       await this.registry.pm2.start(
@@ -90,7 +93,15 @@ export class ProcessStage implements DeployStageHandler {
       await this.waitForPort(port, serviceName);
 
       const baseUrl = this.registry.repo.getBaseUrl(ctx.repo);
-      const url = `${baseUrl}/${ctx.repo}/${safeBranch(ctx.branch)}${serviceName !== "web" ? `/${serviceName}` : ""}`;
+      const { host, path } = publicAddress(
+        ctx.deploymentId,
+        ctx.repo,
+        ctx.branch,
+        serviceName,
+      );
+      const url = host
+        ? `${new URL(baseUrl).protocol}//${host}`
+        : `${baseUrl}${path}`;
       this.registry.port.update(ctx.deploymentId, {
         serviceName,
         port,

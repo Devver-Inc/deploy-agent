@@ -52,6 +52,7 @@ export class RollbackService {
         this.registry.git.rollbackPromotion(
           ctx.branch,
           ctx.repo,
+          ctx.serviceName!,
           ctx.requestId,
         ),
       );
@@ -60,6 +61,7 @@ export class RollbackService {
         this.registry.git.discardCandidateWorktree(
           ctx.branch,
           ctx.repo,
+          ctx.serviceName!,
           ctx.requestId,
         ),
       );

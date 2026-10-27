@@ -81,15 +81,12 @@ export class GitWorktreeOperations {
       throw new Error(`Failed to list Git worktrees: ${result.stderr}`);
     }
 
-    const worktrees: string[] = [];
-    for (const line of result.stdout.split("\n")) {
-      if (line.startsWith("worktree ") && line.includes(deploymentsPath)) {
-        const path = line.replace("worktree ", "");
-        const branch = path.split(`${deploymentsPath}/`)[1];
-        if (branch && !branch.startsWith(".releases/")) worktrees.push(branch);
-      }
-    }
-    return worktrees;
+    const prefix = `worktree ${deploymentsPath}/`;
+    return result.stdout
+      .split("\n")
+      .filter((line) => line.startsWith(prefix))
+      .map((line) => line.slice(prefix.length))
+      .filter((branch) => branch && !branch.startsWith(".releases/"));
   }
 
   async getCurrentCommit(worktreePath: string): Promise<string> {

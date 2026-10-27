@@ -79,6 +79,7 @@ export interface RepoResponse {
   name: string;
   createdAt: string;
   pushUrl: string;
+  sshPushUrl?: string;
 }
 
 export interface PM2Process {

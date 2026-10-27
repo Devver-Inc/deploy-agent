@@ -1,20 +1,27 @@
-import { safeBranch } from "../../utils/branch";
 import type { OverlayAccessControl } from "../../types";
 import type { ServiceRoute } from "../nginx-manager";
+import { deploymentPath } from "./public-address";
 
 const DEVVER_WIDGET_URL = process.env.DEVVER_WIDGET_URL ?? "";
 
 function serializeForInlineScript(value: unknown): string {
-  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (character) => {
+  // Also embedded in an nginx '...' string, where `$` is a variable.
+  return JSON.stringify(value).replace(/[<>&'$\u2028\u2029]/g, (character) => {
     const escapes: Record<string, string> = {
       "<": "\\u003c",
       ">": "\\u003e",
       "&": "\\u0026",
+      "'": "\\u0027",
+      $: "\\u0024",
       "\u2028": "\\u2028",
       "\u2029": "\\u2029",
     };
     return escapes[character];
   });
+}
+
+function escapeNginxSingleQuoted(value: string): string {
+  return value.replace(/[\\']/g, (character) => `\\${character}`);
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -35,10 +42,6 @@ function escapeRegex(value: string): string {
 }
 
 export class NginxConfigBuilder {
-  private buildUrlPrefix(repo: string, branch: string): string {
-    return `/${repo}/${safeBranch(branch)}`;
-  }
-
   private buildWidgetSnippet(
     repo: string,
     branch: string,
@@ -56,18 +59,20 @@ export class NginxConfigBuilder {
     const widget = DEVVER_WIDGET_URL
       ? `<script src="${escapeHtmlAttribute(DEVVER_WIDGET_URL)}" defer></script>`
       : "";
-    return `<script>window.__DEVVER__=${ctx}</script>${widget}</body>`;
+    return escapeNginxSingleQuoted(
+      `<script>window.__DEVVER__=${ctx}</script>${widget}</body>`,
+    );
   }
 
-  build(
+  buildSite(
+    host: string,
     repo: string,
     branch: string,
-    { service, port, nodeFrontend }: ServiceRoute,
+    { port, release }: ServiceRoute,
     overlayAccessControl?: OverlayAccessControl,
     projectId?: string,
     organizationId?: string,
   ): string {
-    const prefix = this.buildUrlPrefix(repo, branch);
     const widgetSnippet = this.buildWidgetSnippet(
       repo,
       branch,
@@ -75,15 +80,58 @@ export class NginxConfigBuilder {
       projectId,
       organizationId,
     );
-    const urlSuffix = service !== "web" ? `/${service}` : "";
-    const locationPath = `${prefix}${urlSuffix}`;
+    const releaseHeader = release
+      ? `\n        add_header X-Devver-Release ${release} always;`
+      : "";
+    return `
+server {
+    listen 80;
+    server_name ${host};
+
+    location / {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Accept-Encoding "";${releaseHeader}
+        sub_filter '</body>' '${widgetSnippet}';
+    }
+}
+`;
+  }
+
+  build(
+    repo: string,
+    branch: string,
+    { service, port, nodeFrontend, release }: ServiceRoute,
+    overlayAccessControl?: OverlayAccessControl,
+    projectId?: string,
+    organizationId?: string,
+  ): string {
+    const widgetSnippet = this.buildWidgetSnippet(
+      repo,
+      branch,
+      overlayAccessControl,
+      projectId,
+      organizationId,
+    );
+    const locationPath = deploymentPath(repo, branch, service);
     const regexLocationPath = escapeRegex(locationPath);
+    const releaseHeader = release
+      ? `\n        add_header X-Devver-Release ${release} always;`
+      : "";
     const nodeFrontendLocations = nodeFrontend
       ? `
 
     location ~* ^${regexLocationPath}/(assets|static|_next|__vite_ping|@vite|node_modules|@fs|@id)(.*)$ {
-        proxy_pass http://127.0.0.1:${port}/\$1\$2;
+        proxy_pass http://127.0.0.1:${port}/\$1\$2\$is_args\$args;
         proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_cache_bypass 1;
     }
@@ -110,12 +158,15 @@ export class NginxConfigBuilder {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        # sub_filter cannot rewrite compressed bodies; nginx gzips after rewriting.
+        proxy_set_header Accept-Encoding "";${releaseHeader}
         sub_filter_once off;
         sub_filter_types application/javascript text/javascript;
-        sub_filter 'src="/' 'src="${locationPath}/';
-        sub_filter 'href="/' 'href="${locationPath}/';
-        sub_filter "src='/" "src='${locationPath}/";
-        sub_filter "href='/" "href='${locationPath}/";
+        # The longest match wins: keep self-closing tags and //host URLs intact.
+        sub_filter '"/>' '"/>';
+        sub_filter "'/>" "'/>";
+        sub_filter '"//' '"//';
+        sub_filter "'//" "'//";
         sub_filter '"/' '"${locationPath}/';
         sub_filter "'/" "'${locationPath}/";
         sub_filter '</body>' '${widgetSnippet}';

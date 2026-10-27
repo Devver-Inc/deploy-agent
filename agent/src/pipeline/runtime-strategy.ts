@@ -2,12 +2,13 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 export type RuntimeProxyProfile = "generic" | "node-frontend";
-export type RuntimePhase = "install" | "build" | "run";
+export type RuntimePhase = "install" | "build" | "run" | "dev";
 
 export interface RuntimePlan {
   readonly id: string;
   readonly installCommand: string;
   readonly startCommand?: string;
+  readonly devCommand?: string;
   readonly beforeInstallCommands: readonly string[];
   readonly proxyProfile: RuntimeProxyProfile;
   environment(servicePath: string, phase: RuntimePhase): Record<string, string>;
@@ -28,6 +29,7 @@ interface RuntimePlanOptions {
   id: string;
   installCommand: string;
   startCommand?: string;
+  devCommand?: string;
   beforeInstallCommands?: readonly string[];
   proxyProfile?: RuntimeProxyProfile;
   environment?: (
@@ -45,6 +47,7 @@ function createRuntimePlan({
   id,
   installCommand,
   startCommand,
+  devCommand,
   beforeInstallCommands = [],
   proxyProfile = "generic",
   environment = () => ({}),
@@ -54,6 +57,7 @@ function createRuntimePlan({
     id,
     installCommand,
     startCommand,
+    devCommand,
     beforeInstallCommands,
     proxyProfile,
     environment,
@@ -76,19 +80,20 @@ function readProcfileStart(servicePath: string): string | undefined {
     .trim();
 }
 
-function readNodeStart(
+function readNodeScript(
   servicePath: string,
   packageManager: "bun" | "npm",
+  script: "start" | "dev",
 ): { command: string; needsCliPort: boolean } | undefined {
   try {
     const packageJson = JSON.parse(
       readFileSync(join(servicePath, "package.json"), "utf8"),
-    ) as { scripts?: { start?: unknown } };
-    const start = packageJson.scripts?.start;
-    return typeof start === "string"
+    ) as { scripts?: Record<string, unknown> };
+    const body = packageJson.scripts?.[script];
+    return typeof body === "string"
       ? {
-          command: `${packageManager} run start`,
-          needsCliPort: /(^|\s)vite(?:\s|$)/.test(start),
+          command: `${packageManager} run ${script}`,
+          needsCliPort: /(^|\s)vite(?:\s|$)/.test(body),
         }
       : undefined;
   } catch {
@@ -102,6 +107,10 @@ function nodeEnvironment(
 ): Record<string, string> {
   return {
     npm_config_cache: "/app/caches/npm",
+    npm_config_prefer_offline: "true",
+    npm_config_audit: "false",
+    npm_config_fund: "false",
+    npm_config_update_notifier: "false",
     BUN_INSTALL_CACHE_DIR: "/app/caches/bun",
     ...(phase === "run" ? { NODE_ENV: "production" } : {}),
   };
@@ -154,15 +163,21 @@ function createNodePlan(
   packageManager: "bun" | "npm",
   installCommand: string,
 ): RuntimePlan {
-  const start = readNodeStart(context.servicePath, packageManager);
+  const start = readNodeScript(context.servicePath, packageManager, "start");
+  const dev = readNodeScript(context.servicePath, packageManager, "dev");
   return createRuntimePlan({
     id: `node/${packageManager}`,
     installCommand,
     startCommand: start?.command ?? context.procfileStart,
+    devCommand: dev?.command,
     proxyProfile: "node-frontend",
     environment: nodeEnvironment,
     prepareStart: (command, port) =>
-      prepareNodeStart(command, port, start?.needsCliPort ?? false),
+      prepareNodeStart(
+        command,
+        port,
+        (command === dev?.command ? dev : start)?.needsCliPort ?? false,
+      ),
   });
 }
 

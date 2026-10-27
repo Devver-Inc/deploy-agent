@@ -15,33 +15,46 @@ export interface ServiceRegistry {
       branch: string,
       commit: string | undefined,
       repo: string,
+      service: ServiceName,
       requestId: string,
     ): Promise<string>;
     promoteCandidateWorktree(
       branch: string,
       repo: string,
+      service: ServiceName,
       requestId: string,
     ): Promise<string>;
     rollbackPromotion(
       branch: string,
       repo: string,
+      service: ServiceName,
       requestId: string,
     ): Promise<void>;
     discardCandidateWorktree(
       branch: string,
       repo: string,
+      service: ServiceName,
       requestId: string,
     ): Promise<void>;
     cleanupBackupWorktree(
       branch: string,
       repo: string,
+      service: ServiceName,
       requestId: string,
     ): Promise<void>;
     getCommitAtPath(worktreePath: string): Promise<string>;
-    removeWorktree(branch: string, repo: string): Promise<void>;
-    listWorktrees(repo: string): Promise<string[]>;
-    getCurrentCommit(branch: string, repo: string): Promise<string>;
-    getDeploymentId(branch: string, repo: string): string;
+    removeWorktree(
+      branch: string,
+      repo: string,
+      service: ServiceName,
+    ): Promise<void>;
+    listWorktrees(repo: string, service: ServiceName): Promise<string[]>;
+    getCurrentCommit(
+      branch: string,
+      repo: string,
+      service: ServiceName,
+    ): Promise<string>;
+    getDeploymentId(branch: string, repo: string, service: ServiceName): string;
   };
   readonly pm2: {
     start(
@@ -66,7 +79,12 @@ export interface ServiceRegistry {
       deploymentId: string,
       repo: string,
       branch: string,
-      route: { service: string; port: number; nodeFrontend?: boolean },
+      route: {
+        service: string;
+        port: number;
+        nodeFrontend?: boolean;
+        release?: string;
+      },
       projectId?: string,
       organizationId?: string,
       overlayAccessControl?: OverlayAccessControl,

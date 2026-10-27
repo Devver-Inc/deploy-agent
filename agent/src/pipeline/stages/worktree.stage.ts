@@ -16,18 +16,6 @@ export class WorktreeStage implements DeployStageHandler {
 
   async execute(ctx: DeployContext, request: DeployRequest): Promise<void> {
     try {
-      ctx.worktreeTouched = true;
-      const candidateWorktreePath =
-        await this.registry.git.createCandidateWorktree(
-          request.branch,
-          request.commit,
-          request.repo,
-          ctx.requestId,
-        );
-      ctx.commit = await this.registry.git.getCommitAtPath(
-        candidateWorktreePath,
-      );
-
       const serviceName = ctx.serviceName;
       const serviceConfig = ctx.serviceConfig;
       if (!serviceName || !serviceConfig) {
@@ -37,12 +25,35 @@ export class WorktreeStage implements DeployStageHandler {
           { step: 1, stage: DeployStage.WORKTREE },
         );
       }
+
+      ctx.worktreeTouched = true;
+      const candidateWorktreePath =
+        await this.registry.git.createCandidateWorktree(
+          request.branch,
+          request.commit,
+          request.repo,
+          serviceName,
+          ctx.requestId,
+        );
+      ctx.commit = await this.registry.git.getCommitAtPath(
+        candidateWorktreePath,
+      );
+
       ctx.servicePath = resolvePathWithin(
         candidateWorktreePath,
         serviceConfig.root,
       );
 
       ctx.runtime = resolveRuntime(ctx.servicePath) ?? undefined;
+      if (
+        serviceName === "web" &&
+        ctx.runtime?.devCommand &&
+        !serviceConfig.build &&
+        !serviceConfig.start
+      ) {
+        serviceConfig.start = ctx.runtime.devCommand;
+        ctx.devMode = true;
+      }
       if (ctx.runtime) {
         serviceConfig.install ??= ctx.runtime.installCommand;
         serviceConfig.start ??= ctx.runtime.startCommand;

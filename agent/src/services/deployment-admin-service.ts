@@ -1,4 +1,8 @@
-import type { DeploymentResponse, ListDeploymentsQuery } from "../types";
+import type {
+  DeploymentResponse,
+  ListDeploymentsQuery,
+  ServiceName,
+} from "../types";
 import { matchesDeployment } from "./pm2-manager";
 import { defaultRegistry } from "../pipeline/registry";
 import type { ServiceRegistry } from "../pipeline/contracts";
@@ -8,6 +12,8 @@ import {
   ApplicationError,
   ApplicationFailureKind,
 } from "../errors/application-error";
+
+const SERVICES: readonly ServiceName[] = ["web", "api"];
 
 function validationFailure(message: string): ApplicationError {
   return new ApplicationError(ApplicationFailureKind.VALIDATION, message);
@@ -19,14 +25,16 @@ export class DeploymentAdminService {
   async listDeployments(
     query: ListDeploymentsQuery = {},
   ): Promise<DeploymentResponse[]> {
-    return lifecycleLock.run(() => this.listDeploymentsUnlocked(query));
+    return this.listDeploymentsUnlocked(query);
   }
 
   async removeDeployment(deploymentId: string): Promise<void> {
     if (!isValidPm2ProcessName(deploymentId)) {
       throw validationFailure("Invalid deployment id.");
     }
-    await lifecycleLock.run(() => this.removeDeploymentUnlocked(deploymentId));
+    await lifecycleLock.run(deploymentId, () =>
+      this.removeDeploymentUnlocked(deploymentId),
+    );
   }
 
   async deleteRepo(name: string): Promise<void> {
@@ -34,13 +42,12 @@ export class DeploymentAdminService {
       throw validationFailure("Invalid repository name.");
     }
 
-    await lifecycleLock.run(async () => {
-      const deployments = await this.listDeploymentsUnlocked({ repo: name });
-      for (const deployment of deployments) {
-        await this.removeDeploymentUnlocked(deployment.deploymentId);
-      }
-      await this.registry.repo.delete(name);
-    });
+    // ponytail: a deploy started for this repo mid-deletion is not blocked; add a repo-level lock if that race shows up.
+    const deployments = await this.listDeploymentsUnlocked({ repo: name });
+    for (const { deploymentId } of deployments) {
+      await this.removeDeployment(deploymentId);
+    }
+    await this.registry.repo.delete(name);
   }
 
   async startProcess(name: string): Promise<void> {
@@ -64,7 +71,8 @@ export class DeploymentAdminService {
     if (!isValidPm2ProcessName(name)) {
       throw validationFailure("Invalid process name.");
     }
-    await lifecycleLock.run(async () => {
+    const deploymentId = name.match(/^(?:web|api)-(.+)-\d+$/)?.[1] ?? name;
+    await lifecycleLock.run(deploymentId, async () => {
       const exists = (await this.registry.pm2.list()).some(
         (process) => process.name === name,
       );
@@ -99,26 +107,37 @@ export class DeploymentAdminService {
     const results: DeploymentResponse[] = [];
 
     for (const currentRepo of repos) {
-      const branches = await this.registry.git.listWorktrees(currentRepo);
-      for (const branch of branches) {
-        const deploymentId = this.registry.git.getDeploymentId(
-          branch,
+      for (const serviceName of SERVICES) {
+        const branches = await this.registry.git.listWorktrees(
           currentRepo,
+          serviceName,
         );
-        const entry = ports[deploymentId];
-        results.push({
-          repo: currentRepo,
-          branch,
-          deploymentId,
-          commit: await this.registry.git.getCurrentCommit(branch, currentRepo),
-          service: entry
-            ? { [entry.serviceName]: { port: entry.port, url: entry.url } }
-            : {},
-          process:
-            processes.find((process) =>
-              matchesDeployment(process.name, deploymentId),
-            ) ?? null,
-        });
+        for (const branch of branches) {
+          const deploymentId = this.registry.git.getDeploymentId(
+            branch,
+            currentRepo,
+            serviceName,
+          );
+          const commit = await this.registry.git
+            .getCurrentCommit(branch, currentRepo, serviceName)
+            .catch(() => undefined);
+          if (commit === undefined) continue;
+
+          const entry = ports[deploymentId];
+          results.push({
+            repo: currentRepo,
+            branch,
+            deploymentId,
+            commit,
+            service: entry
+              ? { [entry.serviceName]: { port: entry.port, url: entry.url } }
+              : {},
+            process:
+              processes.find((process) =>
+                matchesDeployment(process.name, deploymentId),
+              ) ?? null,
+          });
+        }
       }
     }
     return results;
@@ -132,7 +151,11 @@ export class DeploymentAdminService {
     if (portEntry) await this.registry.pm2.killPort(portEntry.port);
     await Promise.all([
       location
-        ? this.registry.git.removeWorktree(location.branch, location.repo)
+        ? this.registry.git.removeWorktree(
+            location.branch,
+            location.repo,
+            location.service,
+          )
         : Promise.resolve(),
       this.registry.nginx.removeConfig(deploymentId),
     ]);
@@ -142,13 +165,20 @@ export class DeploymentAdminService {
 
   private async findDeploymentLocation(
     deploymentId: string,
-  ): Promise<{ branch: string; repo: string } | undefined> {
+  ): Promise<
+    { branch: string; repo: string; service: ServiceName } | undefined
+  > {
     for (const { name: repo } of this.registry.repo.list()) {
-      const branch = (await this.registry.git.listWorktrees(repo)).find(
-        (candidate) =>
-          this.registry.git.getDeploymentId(candidate, repo) === deploymentId,
-      );
-      if (branch) return { branch, repo };
+      for (const service of SERVICES) {
+        const branch = (
+          await this.registry.git.listWorktrees(repo, service)
+        ).find(
+          (candidate) =>
+            this.registry.git.getDeploymentId(candidate, repo, service) ===
+            deploymentId,
+        );
+        if (branch) return { branch, repo, service };
+      }
     }
   }
 }

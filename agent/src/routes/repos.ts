@@ -11,6 +11,7 @@ export const repoRoutes = new Elysia()
       name: r.name,
       createdAt: r.createdAt,
       pushUrl: repoManager.getPushUrl(r.name),
+      sshPushUrl: repoManager.getSshPushUrl(r.name),
     })),
   )
 
@@ -23,6 +24,7 @@ export const repoRoutes = new Elysia()
           success: true as const,
           name: body.name,
           pushUrl: repoManager.getPushUrl(body.name),
+          sshPushUrl: repoManager.getSshPushUrl(body.name),
         };
       } catch (error: unknown) {
         const normalized = toApiError(error, {

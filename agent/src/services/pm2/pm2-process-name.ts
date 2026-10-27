@@ -34,6 +34,6 @@ export function matchesDeployment(
   processName: string,
   deploymentId: string,
 ): boolean {
-  const pattern = `-${escapeRegex(deploymentId)}-\\d+$`;
+  const pattern = `^(?:web|api)-${escapeRegex(deploymentId)}-\\d+$`;
   return getCachedRegex(pattern).test(processName);
 }

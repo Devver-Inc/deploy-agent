@@ -1,6 +1,7 @@
 import { repoManager } from "./repo-manager";
 import { GitPaths } from "./git/git-paths";
 import { GitWorktreeOperations } from "./git/git-worktree-operations";
+import type { ServiceName } from "../types";
 
 export class GitManager {
   private paths = new GitPaths();
@@ -10,19 +11,17 @@ export class GitManager {
     return repoManager.getRepoPath(repo);
   }
 
-  private getDeploymentsPath(repo: string): string {
-    return this.paths.getDeploymentsPath(repo);
-  }
-
   async createCandidateWorktree(
     branch: string,
     commit: string | undefined,
     repo: string,
+    service: ServiceName,
     requestId: string,
   ): Promise<string> {
     const candidatePath = this.paths.getCandidateWorktreePath(
       branch,
       repo,
+      service,
       requestId,
     );
     await this.worktrees.createCandidateWorktree(
@@ -36,24 +35,15 @@ export class GitManager {
   async promoteCandidateWorktree(
     branch: string,
     repo: string,
+    service: ServiceName,
     requestId: string,
   ): Promise<string> {
-    const activePath = this.getWorktreePath(branch, repo);
-    const candidatePath = this.paths.getCandidateWorktreePath(
-      branch,
-      repo,
-      requestId,
-    );
-    const backupPath = this.paths.getBackupWorktreePath(
-      branch,
-      repo,
-      requestId,
-    );
+    const activePath = this.paths.getWorktreePath(branch, repo, service);
     await this.worktrees.promoteCandidateWorktree(
       this.getRepoPath(repo),
       activePath,
-      candidatePath,
-      backupPath,
+      this.paths.getCandidateWorktreePath(branch, repo, service, requestId),
+      this.paths.getBackupWorktreePath(branch, repo, service, requestId),
     );
     return activePath;
   }
@@ -61,34 +51,37 @@ export class GitManager {
   async rollbackPromotion(
     branch: string,
     repo: string,
+    service: ServiceName,
     requestId: string,
   ): Promise<void> {
     await this.worktrees.rollbackPromotion(
       this.getRepoPath(repo),
-      this.getWorktreePath(branch, repo),
-      this.paths.getBackupWorktreePath(branch, repo, requestId),
+      this.paths.getWorktreePath(branch, repo, service),
+      this.paths.getBackupWorktreePath(branch, repo, service, requestId),
     );
   }
 
   async discardCandidateWorktree(
     branch: string,
     repo: string,
+    service: ServiceName,
     requestId: string,
   ): Promise<void> {
     await this.worktrees.removeWorktree(
       this.getRepoPath(repo),
-      this.paths.getCandidateWorktreePath(branch, repo, requestId),
+      this.paths.getCandidateWorktreePath(branch, repo, service, requestId),
     );
   }
 
   async cleanupBackupWorktree(
     branch: string,
     repo: string,
+    service: ServiceName,
     requestId: string,
   ): Promise<void> {
     await this.worktrees.removeWorktree(
       this.getRepoPath(repo),
-      this.paths.getBackupWorktreePath(branch, repo, requestId),
+      this.paths.getBackupWorktreePath(branch, repo, service, requestId),
     );
   }
 
@@ -96,29 +89,36 @@ export class GitManager {
     return this.worktrees.getCurrentCommit(worktreePath);
   }
 
-  async removeWorktree(branch: string, repo: string): Promise<void> {
-    const repoPath = this.getRepoPath(repo);
-    const worktreePath = this.getWorktreePath(branch, repo);
-    await this.worktrees.removeWorktree(repoPath, worktreePath);
+  async removeWorktree(
+    branch: string,
+    repo: string,
+    service: ServiceName,
+  ): Promise<void> {
+    await this.worktrees.removeWorktree(
+      this.getRepoPath(repo),
+      this.paths.getWorktreePath(branch, repo, service),
+    );
   }
 
-  async listWorktrees(repo: string): Promise<string[]> {
-    const repoPath = this.getRepoPath(repo);
-    const deploymentsPath = this.getDeploymentsPath(repo);
-    return this.worktrees.listWorktrees(repoPath, deploymentsPath);
+  async listWorktrees(repo: string, service: ServiceName): Promise<string[]> {
+    return this.worktrees.listWorktrees(
+      this.getRepoPath(repo),
+      this.paths.getDeploymentsPath(repo, service),
+    );
   }
 
-  async getCurrentCommit(branch: string, repo: string): Promise<string> {
-    const worktreePath = this.getWorktreePath(branch, repo);
-    return this.worktrees.getCurrentCommit(worktreePath);
+  async getCurrentCommit(
+    branch: string,
+    repo: string,
+    service: ServiceName,
+  ): Promise<string> {
+    return this.worktrees.getCurrentCommit(
+      this.paths.getWorktreePath(branch, repo, service),
+    );
   }
 
-  private getWorktreePath(branch: string, repo: string): string {
-    return this.paths.getWorktreePath(branch, repo);
-  }
-
-  getDeploymentId(branch: string, repo: string): string {
-    return this.paths.getDeploymentId(branch, repo);
+  getDeploymentId(branch: string, repo: string, service: ServiceName): string {
+    return this.paths.getDeploymentId(branch, repo, service);
   }
 }
 

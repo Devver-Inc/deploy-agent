@@ -3,7 +3,7 @@ set -e
 
 echo "Starting Devver Container..."
 
-mkdir -p /app/data/pm2 /app/repos /app/deployments /app/nginx/conf.d \
+mkdir -p /app/data/pm2 /app/repos /app/deployments /app/nginx/conf.d /app/nginx/sites.d \
          /app/caches/npm /app/caches/bun /app/caches/pip \
          /app/caches/gem /app/caches/go
 
@@ -23,8 +23,21 @@ chmod 700 /app/nginx
 chmod 600 /app/data/repos.json /app/data/ports.json
 
 echo "Starting fcgiwrap (git HTTP backend)..."
-spawn-fcgi -s /var/run/fcgiwrap.sock -U nginx -G nginx -- /usr/bin/fcgiwrap
+# Runs as git (not root) so HTTP and SSH pushes write repo objects as the same user.
+spawn-fcgi -s /var/run/fcgiwrap.sock -u git -g git -U nginx -G nginx -- /usr/bin/fcgiwrap
 chmod 660 /var/run/fcgiwrap.sock
+
+echo "Starting sshd (git over SSH)..."
+mkdir -p /app/data/ssh && chmod 700 /app/data/ssh
+[ -f /app/data/ssh/ssh_host_ed25519_key ] || \
+    ssh-keygen -q -t ed25519 -N "" -f /app/data/ssh/ssh_host_ed25519_key
+# Only the git-gateway may connect; it authorizes developers' keys upstream.
+mkdir -p /etc/ssh/authorized_keys
+case "${DEVVER_GIT_GATEWAY_PUBLIC_KEY:-}" in
+    ssh-*|ecdsa-*) printf 'restrict %s\n' "$(printf '%s' "$DEVVER_GIT_GATEWAY_PUBLIC_KEY" | head -n1)" ;;
+esac > /etc/ssh/authorized_keys/git
+chmod 644 /etc/ssh/authorized_keys/git
+/usr/sbin/sshd -D -e &
 
 echo "Starting Nginx..."
 nginx

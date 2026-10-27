@@ -6,7 +6,9 @@ export const config = {
     portsFile: "/app/data/ports.json",
     reposFile: "/app/data/repos.json",
     nginxConfDir: "/app/nginx/conf.d",
+    nginxSitesDir: "/app/nginx/sites.d",
   },
+  previewDomain: process.env.DEVVER_PREVIEW_DOMAIN?.toLowerCase(),
   databases: {
     mongo: process.env.DEVVER_MONGO_CONNECTION_STRING,
     postgres: process.env.DEVVER_POSTGRES_CONNECTION_STRING,
