@@ -8,6 +8,20 @@ export interface ExecResult {
   exitCode: number;
 }
 
+// User code (install/build/start) never inherits the agent's env: DEVVER_SECRET
+// and the connection strings live there.
+export function userEnv(
+  env: Record<string, string> = {},
+): Record<string, string> {
+  return {
+    PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+    HOME: "/home/deploy",
+    LANG: process.env.LANG ?? "C.UTF-8",
+    TZ: process.env.TZ ?? "UTC",
+    ...env,
+  };
+}
+
 export async function exec(
   command: string,
   cwd?: string,
@@ -29,8 +43,8 @@ export async function exec(
     )
       .cwd(cwd ?? process.cwd())
       .quiet();
-    const result = await (options?.env
-      ? shell.env({ ...process.env, ...options.env })
+    const result = await (options?.env || options?.user
+      ? shell.env(userEnv(options.env))
       : shell);
     return {
       success: result.exitCode === 0,

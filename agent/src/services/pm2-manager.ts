@@ -6,7 +6,7 @@ import {
   writeFileSync,
 } from "fs";
 import { createServer } from "net";
-import { exec, execOrThrow } from "../utils/exec";
+import { exec, execOrThrow, userEnv } from "../utils/exec";
 import { ensureDir } from "../utils/fs";
 import type {
   PM2Process,
@@ -27,6 +27,20 @@ export { matchesDeployment };
 
 const ROOT_UID = 0;
 const DEPLOY_GID = 10001;
+
+// The PM2 daemon holds the agent's env and `restart --update-env` merges it in,
+// so the wrapper keeps only the names we set. Values stay out of the file.
+export function buildWrapperScript(
+  command: string,
+  env: Record<string, string>,
+): string {
+  const keep = Object.keys(env)
+    .filter((name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
+    .map((name) => `${name}="$${name}"`)
+    .join(" ");
+  const quoted = `'${command.replaceAll("'", `'\\''`)}'`;
+  return `#!/bin/sh\nexec env -i ${keep} /bin/sh -c ${quoted}\n`;
+}
 
 export class PM2Manager {
   private snapshotFile(path: string): FileSnapshot {
@@ -115,7 +129,11 @@ export class PM2Manager {
     await this.killPort(port);
     await this.waitForPortFree(port);
 
-    const envVars = { ...env, PORT: port.toString(), HOST: "0.0.0.0" };
+    const envVars = userEnv({
+      ...env,
+      PORT: port.toString(),
+      HOST: "0.0.0.0",
+    });
     ensureDir(config.paths.pm2Data);
     const ecosystemFile = `${config.paths.pm2Data}/${name}.config.js`;
     const wrapperScript = `${config.paths.pm2Data}/${name}.sh`;
@@ -130,6 +148,7 @@ export class PM2Manager {
           uid: "deploy",
           gid: "deploy",
           env: envVars,
+          filter_env: true,
           watch: false,
           autorestart: true,
           max_restarts: 5,
@@ -144,7 +163,7 @@ export class PM2Manager {
       { mode: 0o600 },
     );
 
-    writeFileSync(wrapperScript, `#!/bin/sh\nexec ${startCommand}\n`, {
+    writeFileSync(wrapperScript, buildWrapperScript(startCommand, envVars), {
       mode: 0o750,
     });
     chownSync(wrapperScript, ROOT_UID, DEPLOY_GID);
