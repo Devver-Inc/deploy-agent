@@ -39,10 +39,17 @@ export function lockHash(servicePath: string, root = "."): string {
 const servicePathOf = (r: Release) =>
   resolvePathWithin(releaseDir(r.id, r.release), r.service.root);
 
+// Only a hash is stored: an env change must redeploy, but its values never touch disk.
+export function envHash(env: Record<string, string> = {}): string {
+  const sorted = Object.entries(env).sort(([a], [b]) => a.localeCompare(b));
+  return createHash("sha256").update(JSON.stringify(sorted)).digest("hex");
+}
+
 function sameDeployment(r: Release, spec: Deployment, commit: string): boolean {
   return (
     r.repo === spec.repo && r.commit === commit && r.host === spec.host &&
-    JSON.stringify(r.service) === JSON.stringify(spec.service)
+    JSON.stringify(r.service) === JSON.stringify(spec.service) &&
+    r.envHash === envHash(spec.env)
   );
 }
 
@@ -183,7 +190,7 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
 
     store.set({
       id, repo: spec.repo, ref: spec.ref, commit, host: spec.host, service: spec.service,
-      release, port, lockHash: hash, startedAt: new Date().toISOString(),
+      release, port, lockHash: hash, envHash: envHash(spec.env), startedAt: new Date().toISOString(),
     });
     try {
       await syncRoutes({ host: spec.host, port });

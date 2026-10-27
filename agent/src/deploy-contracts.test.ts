@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { HOST_PATTERN, ID_PATTERN, REF_PATTERN } from "./contract";
-import { lockHash } from "./deploy";
+import { envHash, lockHash } from "./deploy";
 import { routesMap, widgetConf } from "./nginx";
 import { wrapperScript } from "./pm2";
 import { run, userEnv } from "./utils/exec";
@@ -60,4 +60,10 @@ test("lock hash follows the lockfile, so unchanged deps are reused", () => {
 test("service.root stays inside the release", () => {
   expect(resolvePathWithin("/app/deployments/x/r", "web")).toBe("/app/deployments/x/r/web");
   expect(() => resolvePathWithin("/app/deployments/x/r", "../../y")).toThrow();
+});
+
+test("an env change is a new deployment, key order is not", () => {
+  expect(envHash({ A: "1", B: "2" })).toBe(envHash({ B: "2", A: "1" }));
+  expect(envHash({ A: "1" })).not.toBe(envHash({ A: "2" }));
+  expect(envHash(undefined)).toBe(envHash({}));
 });

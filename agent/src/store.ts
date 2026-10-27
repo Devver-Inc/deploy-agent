@@ -13,6 +13,7 @@ export interface Release {
   release: string;
   port: number;
   lockHash?: string;
+  envHash?: string;
   startedAt: string;
 }
 
