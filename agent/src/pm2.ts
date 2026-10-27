@@ -38,7 +38,6 @@ export async function list(): Promise<Map<string, Pm2Status>> {
   return new Map(procs.map((p) => [p.name, p.pm2_env?.status ?? "stopped"]));
 }
 
-/** Missing processes are fine: deleting is idempotent. */
 export async function remove(name: string): Promise<void> {
   await run(["pm2", "delete", name]);
 }
@@ -48,7 +47,6 @@ export async function control(name: string, action: "stop" | "start" | "restart"
   await runOrThrow(["pm2", action === "stop" ? "stop" : "restart", name]);
 }
 
-/** stdout and stderr interleaved, as the app wrote them. */
 const logFile = (name: string) => `${process.env.PM2_HOME ?? "/root/.pm2"}/logs/${name}.log`;
 
 export async function logs(name: string, lines: number): Promise<string> {

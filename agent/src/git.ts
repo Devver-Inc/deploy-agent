@@ -11,7 +11,6 @@ export const repoPath = (repo: string) => join(config.paths.repos, `${repo}.git`
 export const releaseDir = (id: string, release: string) =>
   join(config.paths.deployments, id, release);
 
-/** Idempotent. */
 export async function createRepo(repo: string): Promise<void> {
   const path = repoPath(repo);
   if (existsSync(path)) return;
@@ -24,7 +23,6 @@ export function deleteRepo(repo: string): void {
   rmSync(repoPath(repo), { recursive: true, force: true });
 }
 
-/** Branch name or commit → full commit sha. */
 export async function resolveCommit(repo: string, ref: string): Promise<string> {
   if (!existsSync(repoPath(repo))) {
     throw new AgentError(404, "REPO_NOT_FOUND", `Repo '${repo}' does not exist.`);
@@ -46,7 +44,6 @@ export async function addRelease(repo: string, id: string, release: string, comm
   return dir;
 }
 
-/** Releases are never moved: they are only created and deleted. */
 export async function removeRelease(repo: string, id: string, release: string) {
   rmSync(releaseDir(id, release), { recursive: true, force: true });
   if (existsSync(repoPath(repo))) {
@@ -54,8 +51,6 @@ export async function removeRelease(repo: string, id: string, release: string) {
   }
 }
 
-// Redeploys the deployments that follow the pushed branch. Runs as the git user;
-// the agent route is local-only and re-reads the desired state itself.
 async function installPushHook(path: string): Promise<void> {
   const hook = join(path, "hooks", "post-receive");
   await Bun.write(

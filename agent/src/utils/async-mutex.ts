@@ -1,10 +1,3 @@
-/**
- * A simple promise-chain mutex for serializing async operations.
- *
- * Usage:
- *   const mutex = new AsyncMutex();
- *   const result = await mutex.run(() => doExclusiveWork());
- */
 export class AsyncMutex {
   private queue: Promise<void> = Promise.resolve();
 
@@ -24,14 +17,6 @@ export class AsyncMutex {
   }
 }
 
-/**
- * A keyed mutex — maintains independent locks per string key.
- * Completed entries are automatically cleaned up.
- *
- * Usage:
- *   const mutex = new KeyedAsyncMutex();
- *   const result = await mutex.run("key", () => doExclusiveWork());
- */
 export class KeyedAsyncMutex {
   private locks = new Map<string, Promise<void>>();
 

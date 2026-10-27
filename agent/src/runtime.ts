@@ -188,8 +188,6 @@ function createPipPlan(
   });
 }
 
-// Order is part of the Interface: specific lockfiles win before generic manifests.
-// A new runtime extends this catalog without changing pipeline stages.
 const runtimeStrategies: readonly RuntimeStrategy[] = [
   {
     matches: ({ servicePath }) =>

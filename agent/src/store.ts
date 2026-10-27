@@ -3,7 +3,6 @@ import { dirname } from "path";
 import type { ServiceSpec } from "./contract";
 import { config } from "./config";
 
-/** What runs now for one deployment id. The env is never stored. */
 export interface Release {
   id: string;
   repo: string;
@@ -11,7 +10,7 @@ export interface Release {
   commit: string;
   host: string;
   service: ServiceSpec;
-  release: string; // directory name under deployments/<id>/, also the PM2 name
+  release: string;
   port: number;
   lockHash?: string;
   startedAt: string;

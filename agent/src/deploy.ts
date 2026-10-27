@@ -65,7 +65,6 @@ async function freePort(): Promise<number> {
   });
 }
 
-/** Hardlink copy: same volume, no extra space, instant. */
 async function linkCopy(from: string, to: string): Promise<void> {
   if (!existsSync(from) || existsSync(to)) return;
   await run(["mkdir", "-p", dirname(to)], { user: "deploy" });
@@ -105,11 +104,6 @@ export function deploy(id: string, spec: Deployment, emit: Emit = () => {}) {
   return lock.run(id, () => deployLocked(id, spec, emit));
 }
 
-/**
- * Blue/green: every release gets its own directory and port; the old one keeps
- * serving until the new one answers, then nginx swaps. Nothing is ever moved,
- * so a failure only has to delete what it created.
- */
 async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<DeploymentStatus> {
   envs.set(id, spec.env ?? {});
   await createRepo(spec.repo);
@@ -137,7 +131,6 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
     }
     const runtime = resolveRuntime(servicePath);
     const service = { ...spec.service };
-    // A Node app sent without build/start runs its `dev` script (HMR, no production build).
     const dev = !!runtime?.devCommand && !service.build && !service.start;
     if (dev) service.start = runtime!.devCommand;
     service.install ??= runtime?.installCommand;
@@ -243,18 +236,16 @@ export async function removeRepo(repo: string): Promise<void> {
   deleteRepo(repo);
 }
 
-/** post-receive: redeploy what follows the pushed branch. */
 export async function onPush(repo: string, ref: string): Promise<void> {
   for (const r of store.all().filter((r) => r.repo === repo && r.ref === ref)) {
     const env = envs.get(r.id);
-    if (!env) continue; // agent restarted; the boot reconcile resends it
+    if (!env) continue;
     await deploy(r.id, { repo, ref, host: r.host, service: r.service, env }).catch((error) =>
       console.error(`push redeploy of ${r.id} failed: ${toApiError(error).message}`),
     );
   }
 }
 
-/** Boot: make the local state match the backend's (replaces the restore endpoint). */
 export async function reconcile(): Promise<void> {
   const { backendUrl, projectId, secret } = config;
   if (!backendUrl || !projectId || !secret) return;

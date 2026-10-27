@@ -5,11 +5,8 @@ import { AsyncMutex } from "./utils/async-mutex";
 import { pollUntil } from "./utils/poll-until";
 import { runOrThrow } from "./utils/exec";
 
-// nginx.conf has one static preview server: `map $host $devver_upstream` includes
-// routes.map, regenerated from the store. A swap is one write + one reload.
 const mutex = new AsyncMutex();
 
-/** The widget reads its context from /__devver/context, so the snippet is static. */
 export function widgetConf(url: string): string {
   if (!url) return "";
   // Encoded so nothing can close the quotes or become an nginx $variable.
@@ -21,7 +18,6 @@ export function routesMap(routes: { host: string; port: number }[]): string {
   return routes.map(({ host, port }) => `${host} 127.0.0.1:${port};\n`).join("");
 }
 
-/** Applies the store's routes and waits until nginx serves `expect`, if given. */
 export function syncRoutes(expect?: { host: string; port: number }): Promise<void> {
   return mutex.run(async () => {
     writeFileSync(config.paths.routes, routesMap(store.all()));

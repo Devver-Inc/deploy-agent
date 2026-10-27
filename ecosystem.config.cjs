@@ -1,8 +1,6 @@
-// PID 1 is pm2-runtime: it restarts the agent, nginx and sshd if any of them dies.
-// User apps are started into the same daemon by the agent (`pm2 start`).
 const agent = require("fs").existsSync("/usr/local/bin/deploy-agent")
   ? { script: "/usr/local/bin/deploy-agent" }
-  : { script: "/usr/local/bin/bun", args: "run src/index.ts", cwd: "/app/agent" }; // dev: source mounted
+  : { script: "/usr/local/bin/bun", args: "run src/index.ts", cwd: "/app/agent" };
 
 // Absolute paths: PM2 resolves a bare name against the cwd first (/app/nginx is a directory).
 module.exports = {

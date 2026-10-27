@@ -1,8 +1,3 @@
-/**
- * Polls a check function until it returns true or times out.
- * Throws an Error with the provided message on timeout.
- * Any error thrown by `check` propagates immediately without retrying.
- */
 export async function pollUntil(
   check: () => Promise<boolean>,
   timeoutMs: number,

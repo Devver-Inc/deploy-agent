@@ -19,7 +19,6 @@ export function userEnv(
   };
 }
 
-/** argv, no shell. `user` drops privileges and swaps the env for userEnv(env). */
 export async function run(
   argv: string[],
   opts: { cwd?: string; env?: Record<string, string>; user?: string } = {},
@@ -47,7 +46,6 @@ export async function runOrThrow(argv: string[], cwd?: string): Promise<string> 
   return result.stdout;
 }
 
-/** The user's own command line, run by sh as the deploy user. */
 export function runUserCommand(
   command: string,
   cwd: string,

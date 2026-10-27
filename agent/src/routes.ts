@@ -17,7 +17,6 @@ export const routes = new Elysia()
   .put(
     "/deployments/:id",
     async ({ params, body }) => {
-      // Fails as plain 4xx JSON (missing ref) before the 200 stream opens.
       await createRepo(body.repo);
       await resolveCommit(body.repo, body.ref);
       const stream = new ReadableStream<Uint8Array>({
@@ -95,7 +94,6 @@ export const routes = new Elysia()
   )
   .get("/databases/mongo", () => listMongoDatabases());
 
-/** No secret: reached only from inside the pod (nginx and the git hook). */
 export const localRoutes = new Elysia()
   .get("/health", () => ({ status: "ok" }))
   .get("/__devver/context", ({ request, set }) => {

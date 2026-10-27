@@ -1,6 +1,5 @@
 import { t, type Static } from "elysia";
 
-// The agent's whole API surface. backend-service mirrors these types.
 export const ID_PATTERN = "^[a-z0-9][a-z0-9-]{0,62}$";
 export const REPO_PATTERN = "^[a-z0-9][a-z0-9-]{0,62}$";
 export const HOST_PATTERN =
