@@ -79,12 +79,7 @@ export interface ServiceRegistry {
       deploymentId: string,
       repo: string,
       branch: string,
-      route: {
-        service: string;
-        port: number;
-        nodeFrontend?: boolean;
-        release?: string;
-      },
+      route: { port: number; release?: string },
       projectId?: string,
       organizationId?: string,
       overlayAccessControl?: OverlayAccessControl,

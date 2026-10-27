@@ -7,10 +7,14 @@ import { gitAuthRoutes } from "./middleware/git-auth";
 import { timingSafeEqual } from "crypto";
 import { ApplicationError } from "./errors/application-error";
 import { toApiError } from "./utils/api-error";
+import { config } from "./config";
 
 const DEVVER_SECRET = process.env.DEVVER_SECRET;
 if (!DEVVER_SECRET) {
   throw new Error("DEVVER_SECRET environment variable is required");
+}
+if (!config.previewDomain) {
+  throw new Error("DEVVER_PREVIEW_DOMAIN environment variable is required");
 }
 const EXPECTED_DEVVER_SECRET = DEVVER_SECRET;
 const PORT = process.env.PORT ?? 8080;

@@ -3,7 +3,7 @@ set -e
 
 echo "Starting Devver Container..."
 
-mkdir -p /app/data/pm2 /app/repos /app/deployments /app/nginx/conf.d /app/nginx/sites.d \
+mkdir -p /app/data/pm2 /app/repos /app/deployments /app/nginx/sites.d \
          /app/caches/npm /app/caches/bun /app/caches/pip \
          /app/caches/gem /app/caches/go
 

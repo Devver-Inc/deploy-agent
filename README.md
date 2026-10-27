@@ -50,7 +50,7 @@ bun run dev   # watch mode
 | `DEVVER_PROJECT_ID` / `DEVVER_GIT_AUTH_URL` | Git push: **Yes** | — | Project and platform used to authorize Git tokens and SSH keys |
 | `DEVVER_GIT_SSH_HOST` | No | — | git-gateway host, e.g. `git.devver.app`; adds `sshPushUrl` to `/repos` |
 | `DEVVER_GIT_GATEWAY_PUBLIC_KEY` | No | — | The only key sshd accepts (the git-gateway's). Unset: no SSH access |
-| `DEVVER_PREVIEW_DOMAIN` | No | — | e.g. `preview.example.com`: serve each deployment on its own host (see below). Needs wildcard DNS + TLS |
+| `DEVVER_PREVIEW_DOMAIN` | **Yes** | — | e.g. `preview.example.com`: each deployment is served on its own host (see below). Needs wildcard DNS + TLS |
 | `DEVVER_MONGO_CONNECTION_STRING` | Mongo catalog: **Yes** | — | Mongo connection string used by `/databases/mongo` |
 | `DEVVER_POSTGRES_CONNECTION_STRING` | PostgreSQL catalog: **Yes** | — | PostgreSQL connection string used by `/databases/postgres` |
 | `DEVVER_REDIS_CONNECTION_STRING` | Redis catalog: **Yes** | — | Redis connection string used by `/databases/redis` |
@@ -68,7 +68,7 @@ bun run dev   # watch mode
 │   ├── ports.json    # Allocated port mappings
 │   └── repos.json    # Repo registry
 ├── nginx/
-│   └── conf.d/       # Dynamic configs generated per deploy
+│   └── sites.d/      # One server block per deployment host
 └── agent/            # Agent source code
 ```
 
@@ -192,17 +192,14 @@ mongodb://root:senha@test-overlay-test-db-mongo:27017/admin?authSource=admin&tls
 Each request deploys one service. `web` and `api` of the same branch are independent deployments
 (own worktree, port, PM2 process and Nginx config) and can be deployed in parallel:
 
-| Service | `deploymentId`        | URL                         |
-| ------- | --------------------- | --------------------------- |
-| `web`   | `<repo>-<branch>`     | `<baseUrl>/<repo>/<branch>` |
-| `api`   | `<repo>.api-<branch>` | `<baseUrl>/<repo>/<branch>/api` |
+| Service | `deploymentId`        | URL                                      |
+| ------- | --------------------- | ---------------------------------------- |
+| `web`   | `<repo>-<branch>`     | `<repo>-<branch>.<DEVVER_PREVIEW_DOMAIN>`  |
+| `api`   | `<repo>.api-<branch>` | `<repo>--api-<branch>.<DEVVER_PREVIEW_DOMAIN>` |
 
-With `DEVVER_PREVIEW_DOMAIN=preview.example.com` each deployment gets its own host instead
-(`web` → `app-main.preview.example.com`, `api` → `app--api-main.preview.example.com`) and runs at `/`,
-so client-side routing, the app's own `/api/*` routes, CSS/fonts and dev-server HMR work unchanged.
-Path-prefix mode can only rewrite HTML responses: anything a JS/CSS bundle requests by absolute
-path (`fetch("/api/x")`, `url(/_next/...)`, lazy chunks) still hits the shared host's root.
-Infra for preview mode: a wildcard DNS record and TLS certificate for `*.preview.example.com`,
+Each deployment runs at `/` on its own host, so client-side routing, the app's own `/api/*` routes,
+CSS/fonts and dev-server HMR work unchanged. The agent refuses to start without `DEVVER_PREVIEW_DOMAIN`.
+Infra: a wildcard DNS record and TLS certificate for `*.preview.example.com`,
 routed to the agent's port 80 with the `Host` header preserved.
 
 **Dev mode:** for a Node `web` service sent without `build` and `start`, the agent skips the build

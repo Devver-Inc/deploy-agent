@@ -1,19 +1,5 @@
 import { createHash } from "crypto";
-import { safeBranch } from "../../utils/branch";
 import { config } from "../../config";
-
-export interface PublicAddress {
-  host?: string;
-  path: string;
-}
-
-export function deploymentPath(
-  repo: string,
-  branch: string,
-  service: string,
-): string {
-  return `/${repo}/${safeBranch(branch)}${service !== "web" ? `/${service}` : ""}`;
-}
 
 function hostLabel(deploymentId: string): string {
   const label = deploymentId
@@ -25,14 +11,10 @@ function hostLabel(deploymentId: string): string {
   return `${label.slice(0, 54).replace(/-+$/, "")}-${hash}`;
 }
 
-export function publicAddress(
+export function publicHost(
   deploymentId: string,
-  repo: string,
-  branch: string,
-  service: string,
   previewDomain = config.previewDomain,
-): PublicAddress {
-  return previewDomain
-    ? { host: `${hostLabel(deploymentId)}.${previewDomain}`, path: "" }
-    : { path: deploymentPath(repo, branch, service) };
+): string {
+  if (!previewDomain) throw new Error("DEVVER_PREVIEW_DOMAIN is not set.");
+  return `${hostLabel(deploymentId)}.${previewDomain}`;
 }

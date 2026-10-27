@@ -1,27 +1,20 @@
 import { exec, execOrThrow } from "../utils/exec";
 import { AsyncMutex } from "../utils/async-mutex";
 import { NginxConfigBuilder } from "./nginx/nginx-config-builder";
-import { publicAddress } from "./nginx/public-address";
+import { publicHost } from "./nginx/public-address";
 import { NginxConfigRepository } from "./nginx/nginx-config-repository";
 import { config } from "../config";
 import type { OverlayAccessControl, NginxConfigSnapshot } from "../types";
 
 export interface ServiceRoute {
-  service: string;
   port: number;
-  nodeFrontend?: boolean;
   release?: string;
 }
 
 export class NginxManager {
   private builder = new NginxConfigBuilder();
-  private locations = new NginxConfigRepository(config.paths.nginxConfDir);
-  private sites = new NginxConfigRepository(config.paths.nginxSitesDir);
+  private repository = new NginxConfigRepository(config.paths.nginxSitesDir);
   private mutex = new AsyncMutex();
-
-  private get repository(): NginxConfigRepository {
-    return config.previewDomain ? this.sites : this.locations;
-  }
 
   async writeConfig(
     deploymentId: string,
@@ -32,25 +25,15 @@ export class NginxManager {
     organizationId?: string,
     overlayAccessControl?: OverlayAccessControl,
   ): Promise<void> {
-    const { host } = publicAddress(deploymentId, repo, branch, route.service);
-    const content = host
-      ? this.builder.buildSite(
-          host,
-          repo,
-          branch,
-          route,
-          overlayAccessControl,
-          projectId,
-          organizationId,
-        )
-      : this.builder.build(
-          repo,
-          branch,
-          route,
-          overlayAccessControl,
-          projectId,
-          organizationId,
-        );
+    const content = this.builder.buildSite(
+      publicHost(deploymentId),
+      repo,
+      branch,
+      route,
+      overlayAccessControl,
+      projectId,
+      organizationId,
+    );
 
     await this.mutex.run(async () => {
       this.repository.write(deploymentId, content);
@@ -66,8 +49,7 @@ export class NginxManager {
   }
 
   async removeConfig(deploymentId: string): Promise<void> {
-    this.locations.remove(deploymentId);
-    this.sites.remove(deploymentId);
+    this.repository.remove(deploymentId);
   }
 
   getConfigSnapshot(deploymentId: string): NginxConfigSnapshot {

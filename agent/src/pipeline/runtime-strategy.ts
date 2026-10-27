@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
-export type RuntimeProxyProfile = "generic" | "node-frontend";
 export type RuntimePhase = "install" | "build" | "run" | "dev";
 
 export interface RuntimePlan {
@@ -10,7 +9,6 @@ export interface RuntimePlan {
   readonly startCommand?: string;
   readonly devCommand?: string;
   readonly beforeInstallCommands: readonly string[];
-  readonly proxyProfile: RuntimeProxyProfile;
   environment(servicePath: string, phase: RuntimePhase): Record<string, string>;
   prepareStart(command: string, port: number, servicePath: string): string;
 }
@@ -31,7 +29,6 @@ interface RuntimePlanOptions {
   startCommand?: string;
   devCommand?: string;
   beforeInstallCommands?: readonly string[];
-  proxyProfile?: RuntimeProxyProfile;
   environment?: (
     servicePath: string,
     phase: RuntimePhase,
@@ -49,7 +46,6 @@ function createRuntimePlan({
   startCommand,
   devCommand,
   beforeInstallCommands = [],
-  proxyProfile = "generic",
   environment = () => ({}),
   prepareStart = (command) => command,
 }: RuntimePlanOptions): RuntimePlan {
@@ -59,7 +55,6 @@ function createRuntimePlan({
     startCommand,
     devCommand,
     beforeInstallCommands,
-    proxyProfile,
     environment,
     prepareStart,
   };
@@ -170,7 +165,6 @@ function createNodePlan(
     installCommand,
     startCommand: start?.command ?? context.procfileStart,
     devCommand: dev?.command,
-    proxyProfile: "node-frontend",
     environment: nodeEnvironment,
     prepareStart: (command, port) =>
       prepareNodeStart(

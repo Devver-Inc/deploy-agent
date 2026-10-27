@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { GitPaths } from "./services/git/git-paths";
 import { matchesDeployment } from "./services/pm2/pm2-process-name";
 import { NginxConfigBuilder } from "./services/nginx/nginx-config-builder";
-import { publicAddress } from "./services/nginx/public-address";
+import { publicHost } from "./services/nginx/public-address";
 import { exec } from "./utils/exec";
 import { buildWrapperScript } from "./services/pm2-manager";
 
@@ -31,10 +31,11 @@ test("web keeps its historical id; api gets its own, collision-free id", () => {
 });
 
 test("request values cannot break out of the generated nginx config", () => {
-  const conf = new NginxConfigBuilder().build(
+  const conf = new NginxConfigBuilder().buildSite(
+    "app-main.p.dev",
     "app",
     "main",
-    { service: "web", port: 3000 },
+    { port: 3000 },
     undefined,
     `x'; } location / { alias /app/data; } #`,
     "$host\\",
@@ -46,15 +47,11 @@ test("request values cannot break out of the generated nginx config", () => {
 });
 
 test("preview hosts are DNS-safe and unique per service", () => {
-  const web = publicAddress("app-feat-x", "app", "feat/x", "web", "p.dev");
-  const api = publicAddress("app.api-feat-x", "app", "feat/x", "api", "p.dev");
-  expect(web).toEqual({ host: "app-feat-x.p.dev", path: "" });
-  expect(api.host).toBe("app--api-feat-x.p.dev");
-  const long = publicAddress(`app-${"b".repeat(80)}`, "app", "b", "web", "p.dev");
-  expect(long.host!.split(".")[0]!.length).toBeLessThanOrEqual(63);
-  expect(publicAddress("app-main", "app", "main", "web", undefined)).toEqual({
-    path: "/app/main",
-  });
+  expect(publicHost("app-feat-x", "p.dev")).toBe("app-feat-x.p.dev");
+  expect(publicHost("app.api-feat-x", "p.dev")).toBe("app--api-feat-x.p.dev");
+  const long = publicHost(`app-${"b".repeat(80)}`, "p.dev");
+  expect(long.split(".")[0]!.length).toBeLessThanOrEqual(63);
+  expect(() => publicHost("app-main", undefined)).toThrow();
 });
 
 test("deployment match is anchored on the whole process name", () => {

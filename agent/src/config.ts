@@ -5,7 +5,6 @@ export const config = {
     pm2Data: "/app/data/pm2",
     portsFile: "/app/data/ports.json",
     reposFile: "/app/data/repos.json",
-    nginxConfDir: "/app/nginx/conf.d",
     nginxSitesDir: "/app/nginx/sites.d",
   },
   previewDomain: process.env.DEVVER_PREVIEW_DOMAIN?.toLowerCase(),

@@ -80,7 +80,6 @@ RUN node --version && \
 RUN mkdir -p /app/repos \
     /app/deployments \
     /app/data \
-    /app/nginx/conf.d \
     /app/nginx/sites.d \
     /app/caches/npm \
     /app/caches/bun \

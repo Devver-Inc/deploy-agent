@@ -4,7 +4,7 @@ import type { ServiceRegistry } from "../contracts";
 import { DeployError } from "../../utils/deploy-error";
 import { pollUntil } from "../../utils/poll-until";
 import { ErrorCode, DeployStage, type DeployRequest } from "../../types";
-import { publicAddress } from "../../services/nginx/public-address";
+import { publicHost } from "../../services/nginx/public-address";
 import { resolvePathWithin } from "../../utils/validation";
 
 /**
@@ -93,15 +93,7 @@ export class ProcessStage implements DeployStageHandler {
       await this.waitForPort(port, serviceName);
 
       const baseUrl = this.registry.repo.getBaseUrl(ctx.repo);
-      const { host, path } = publicAddress(
-        ctx.deploymentId,
-        ctx.repo,
-        ctx.branch,
-        serviceName,
-      );
-      const url = host
-        ? `${new URL(baseUrl).protocol}//${host}`
-        : `${baseUrl}${path}`;
+      const url = `${new URL(baseUrl).protocol}//${publicHost(ctx.deploymentId)}`;
       this.registry.port.update(ctx.deploymentId, {
         serviceName,
         port,
