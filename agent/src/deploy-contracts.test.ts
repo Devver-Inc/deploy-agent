@@ -13,7 +13,6 @@ test("user commands never see the agent's env", async () => {
   process.env.DEVVER_SECRET = "leak";
   expect(userEnv({ NODE_ENV: "x" })).not.toHaveProperty("DEVVER_SECRET");
 
-  // PM2 hands the shell its daemon env plus ours; only ours may survive.
   const env = userEnv({ PORT: "3000" });
   const start = await run(["/bin/sh", "-c", wrapperScript(`echo "it's $PORT"; env`, env)], {
     env: { ...env, DEVVER_SECRET: "leak" },
