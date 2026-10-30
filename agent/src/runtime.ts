@@ -8,7 +8,6 @@ export interface RuntimePlan {
   readonly installCommand: string;
   readonly startCommand?: string;
   readonly devCommand?: string;
-  readonly beforeInstallCommands: readonly string[];
   environment(servicePath: string, phase: RuntimePhase): Record<string, string>;
   prepareStart(command: string, port: number, servicePath: string): string;
 }
@@ -28,7 +27,6 @@ interface RuntimePlanOptions {
   installCommand: string;
   startCommand?: string;
   devCommand?: string;
-  beforeInstallCommands?: readonly string[];
   environment?: (
     servicePath: string,
     phase: RuntimePhase,
@@ -45,7 +43,6 @@ function createRuntimePlan({
   installCommand,
   startCommand,
   devCommand,
-  beforeInstallCommands = [],
   environment = () => ({}),
   prepareStart = (command) => command,
 }: RuntimePlanOptions): RuntimePlan {
@@ -54,7 +51,6 @@ function createRuntimePlan({
     installCommand,
     startCommand,
     devCommand,
-    beforeInstallCommands,
     environment,
     prepareStart,
   };
@@ -183,7 +179,6 @@ function createPipPlan(
     id: "python/pip",
     installCommand,
     startCommand: context.procfileStart,
-    beforeInstallCommands: ["python -m venv .venv"],
     environment: pythonEnvironment,
   });
 }

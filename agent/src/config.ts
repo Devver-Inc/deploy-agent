@@ -12,6 +12,7 @@ export const config = {
   paths: {
     repos: "/app/repos",
     deployments: "/app/deployments",
+    caches: "/app/caches",
     store: "/app/data/deployments.json",
     routes: "/app/nginx/routes.map",
     widget: "/app/nginx/widget.conf",

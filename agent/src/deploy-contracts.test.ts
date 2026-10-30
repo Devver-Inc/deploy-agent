@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { HOST_PATTERN, ID_PATTERN, REF_PATTERN } from "./contract";
-import { envHash, lockHash } from "./deploy";
+import { envHash, lockHash, pruneShared } from "./deploy";
 import { routesMap, widgetConf } from "./nginx";
 import { wrapperScript } from "./pm2";
 import { run, userEnv } from "./utils/exec";
@@ -65,4 +65,23 @@ test("an env change is a new deployment, key order is not", () => {
   expect(envHash({ A: "1", B: "2" })).toBe(envHash({ B: "2", A: "1" }));
   expect(envHash({ A: "1" })).not.toBe(envHash({ A: "2" }));
   expect(envHash(undefined)).toBe(envHash({}));
+});
+
+test("branches with the same lockfile share one dependency folder", () => {
+  const branch = (name: string) => {
+    const dir = mkdtempSync(join(tmpdir(), `${name}-`));
+    writeFileSync(join(dir, "package-lock.json"), '{"react":"19.0.0"}');
+    return dir;
+  };
+  expect(lockHash(branch("main"))).toBe(lockHash(branch("feat-x")));
+});
+
+test("pruning keeps hashes in use and folders still being published", () => {
+  const root = mkdtempSync(join(tmpdir(), "caches-"));
+  const used = "a".repeat(64), unused = "b".repeat(64), publishing = `${"c".repeat(64)}.tmp-x`;
+  for (const name of [used, unused, publishing]) mkdirSync(join(root, "node_modules", name), { recursive: true });
+  mkdirSync(join(root, "venvs", unused), { recursive: true });
+  pruneShared(new Set([used]), root);
+  expect(readdirSync(join(root, "node_modules")).sort()).toEqual([used, publishing].sort());
+  expect(readdirSync(join(root, "venvs"))).toEqual([]);
 });

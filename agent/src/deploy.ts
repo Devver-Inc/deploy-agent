@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { existsSync, readFileSync, rmSync } from "fs";
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createServer, type AddressInfo } from "net";
 import { dirname, join } from "path";
 import type { Deployment, DeploymentStatus, Phase } from "./contract";
@@ -25,7 +25,7 @@ const LOCKFILES = [
   "package.json", "bun.lock", "bun.lockb", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
   "requirements.txt", "pyproject.toml", "poetry.lock", "Gemfile", "Gemfile.lock", "go.mod", "go.sum",
 ];
-const BUILD_CACHES = [".next/cache", "node_modules/.vite"];
+const BUILD_CACHES = [".next/cache", "node_modules/.vite", "node_modules/.cache"];
 
 export function lockHash(servicePath: string, root = "."): string {
   const hash = createHash("sha256").update(root);
@@ -72,10 +72,81 @@ async function freePort(): Promise<number> {
   });
 }
 
-async function linkCopy(from: string, to: string): Promise<void> {
+async function cpInto(flags: string, from: string, to: string): Promise<void> {
   if (!existsSync(from) || existsSync(to)) return;
   await run(["mkdir", "-p", dirname(to)], { user: "deploy" });
-  await run(["cp", "-al", from, to], { user: "deploy" });
+  await run(["cp", flags, from, to], { user: "deploy" });
+}
+
+const sharedDir = (kind: "node_modules" | "venvs", hash: string) =>
+  join(config.paths.caches, kind, hash);
+
+// Shared by every branch with the same lockfile hash and never modified, so a
+// build must not write into it: these build caches stay per release.
+const NODE_MODULES_CACHES = [".vite", ".cache"];
+
+async function sharedNodeModules(servicePath: string, hash: string, install: () => Promise<void>) {
+  const shared = sharedDir("node_modules", hash);
+  if (existsSync(shared)) return cpInto("-al", shared, join(servicePath, "node_modules"));
+
+  await install();
+  const tmp = `${shared}.tmp-${Date.now().toString(36)}`;
+  await cpInto("-al", join(servicePath, "node_modules"), tmp);
+  for (const cache of NODE_MODULES_CACHES) rmSync(join(tmp, cache), { recursive: true, force: true });
+  try {
+    renameSync(tmp, shared);
+  } catch {
+    // Another deploy with the same hash published it first.
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// A virtualenv stores absolute paths, so it is built in place (no temp + rename)
+// under a per-hash lock, and `.ready` marks it complete.
+const venvLock = new KeyedAsyncMutex();
+
+async function sharedVenv(servicePath: string, hash: string, install: () => Promise<void>) {
+  const shared = sharedDir("venvs", hash);
+  const link = async () => {
+    rmSync(join(servicePath, ".venv"), { recursive: true, force: true });
+    await run(["ln", "-s", shared, join(servicePath, ".venv")], { user: "deploy" });
+  };
+  await venvLock.run(hash, async () => {
+    if (existsSync(join(shared, ".ready"))) return link();
+    rmSync(shared, { recursive: true, force: true });
+    await run(["mkdir", "-p", dirname(shared)], { user: "deploy" });
+    const created = await run(["python", "-m", "venv", shared], { user: "deploy" });
+    if (!created.ok) {
+      throw new AgentError(422, "INSTALL_FAILED", "Could not create the Python virtualenv.", created.stderr);
+    }
+    await link();
+    try {
+      await install();
+    } catch (error) {
+      rmSync(shared, { recursive: true, force: true });
+      throw error;
+    }
+    writeFileSync(join(shared, ".ready"), "");
+  });
+}
+
+const inFlight: string[] = [];
+
+export function pruneShared(keep: Set<string>, root = config.paths.caches): void {
+  for (const kind of ["node_modules", "venvs"]) {
+    const dir = join(root, kind);
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      // Temp folders belong to a deploy that is publishing right now.
+      if (/^[0-9a-f]{64}$/.test(name) && !keep.has(name)) {
+        rmSync(join(dir, name), { recursive: true, force: true });
+      }
+    }
+  }
+}
+
+function pruneUnused(): void {
+  pruneShared(new Set([...store.all().map((r) => r.lockHash ?? ""), ...inFlight]));
 }
 
 async function userStep(code: string, command: string, cwd: string, env: Record<string, string>) {
@@ -129,6 +200,7 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
 
   const release = `${id}.${Date.now().toString(36)}`;
   const dir = await addRelease(spec.repo, id, release, commit);
+  let pinned: string | undefined;
   try {
     let servicePath: string;
     try {
@@ -156,21 +228,21 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
       ...spec.env,
     });
     const hash = lockHash(servicePath, spec.service.root);
-    const previous = current && existsSync(releaseDir(id, current.release)) ? servicePathOf(current) : undefined;
-    // ponytail: only node_modules is reused; .venv/.bundle hold absolute paths to their release.
-    if (previous && current?.lockHash === hash && existsSync(join(previous, "node_modules"))) {
-      await linkCopy(join(previous, "node_modules"), join(servicePath, "node_modules"));
-    } else {
-      for (const command of runtime?.beforeInstallCommands ?? []) {
-        await userStep("INSTALL_FAILED", command, servicePath, env("install"));
-      }
+    pinned = hash;
+    inFlight.push(hash);
+    const install = async () => {
       if (service.install) await userStep("INSTALL_FAILED", service.install, servicePath, env("install"));
-    }
+    };
+    // ponytail: Ruby (.bundle) reinstalls every release; Go's module cache is already global.
+    if (runtime?.id.startsWith("node/")) await sharedNodeModules(servicePath, hash, install);
+    else if (runtime?.id.startsWith("python/")) await sharedVenv(servicePath, hash, install);
+    else await install();
     phase("install");
 
+    const previous = current && existsSync(releaseDir(id, current.release)) ? servicePathOf(current) : undefined;
     if (service.build) {
       for (const cache of BUILD_CACHES) {
-        if (previous) await linkCopy(join(previous, cache), join(servicePath, cache));
+        if (previous) await cpInto("-a", join(previous, cache), join(servicePath, cache));
       }
       await userStep("BUILD_FAILED", service.build, servicePath, env("build"));
     }
@@ -205,12 +277,15 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
     await pm2.remove(release);
     await removeRelease(spec.repo, id, release);
     throw error;
+  } finally {
+    if (pinned) inFlight.splice(inFlight.indexOf(pinned), 1);
   }
 
   if (current) {
     await pm2.remove(current.release);
     await removeRelease(current.repo, id, current.release);
   }
+  pruneUnused();
   return statusOf(store.get(id)!, await pm2.list());
 }
 
@@ -224,6 +299,7 @@ export function remove(id: string): Promise<void> {
     await pm2.remove(current.release);
     await removeRelease(current.repo, id, current.release);
     rmSync(join(config.paths.deployments, id), { recursive: true, force: true });
+    pruneUnused();
   });
 }
 
