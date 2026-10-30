@@ -11,7 +11,7 @@ if (!secret || !previewDomain || !projectId) {
   throw new Error("DEVVER_SECRET, DEVVER_PREVIEW_DOMAIN and DEVVER_PROJECT_ID are required");
 }
 const expected = Buffer.from(secret);
-const PUBLIC_PATHS = new Set(["/health", "/__devver/context", "/hooks/push"]);
+const PUBLIC_PATHS = new Set(["/health", "/__devver/context"]);
 
 function matchesSecret(candidate: string | null): boolean {
   const received = Buffer.from(candidate ?? "");

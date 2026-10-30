@@ -16,7 +16,6 @@ export async function createRepo(repo: string): Promise<void> {
   if (existsSync(path)) return;
   await runOrThrow(["git", "init", "--bare", "--quiet", path]);
   await runOrThrow(["chown", "-R", "git:git", path]);
-  await installPushHook(path);
 }
 
 export function deleteRepo(repo: string): void {
@@ -49,23 +48,4 @@ export async function removeRelease(repo: string, id: string, release: string) {
   if (existsSync(repoPath(repo))) {
     await run(["git", "-C", repoPath(repo), "worktree", "prune"]);
   }
-}
-
-async function installPushHook(path: string): Promise<void> {
-  const hook = join(path, "hooks", "post-receive");
-  await Bun.write(
-    hook,
-    `#!/bin/sh
-repo=$(basename "$PWD" .git)
-while read -r _old _new ref; do
-  case "$ref" in refs/heads/*)
-    curl -fsS -X POST "http://127.0.0.1:${config.port}/hooks/push" \\
-      -H 'content-type: application/json' \\
-      -d "{\\"repo\\":\\"$repo\\",\\"ref\\":\\"\${ref#refs/heads/}\\"}" >/dev/null || true
-  esac
-done
-`,
-  );
-  await runOrThrow(["chmod", "755", hook]);
-  await runOrThrow(["chown", "git:git", hook]);
 }

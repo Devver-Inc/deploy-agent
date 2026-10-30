@@ -18,8 +18,6 @@ import { resolvePathWithin } from "./utils/validation";
 type Emit = (phase: Phase, durationMs: number) => void;
 
 const lock = new KeyedAsyncMutex();
-// The env only lives in memory: the backend resends it on every PUT and at boot.
-const envs = new Map<string, Record<string, string>>();
 
 const LOCKFILES = [
   "package.json", "bun.lock", "bun.lockb", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
@@ -183,7 +181,6 @@ export function deploy(id: string, spec: Deployment, emit: Emit = () => {}) {
 }
 
 async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<DeploymentStatus> {
-  envs.set(id, spec.env ?? {});
   await createRepo(spec.repo);
   const commit = await resolveCommit(spec.repo, spec.ref);
   const current = store.get(id);
@@ -294,7 +291,6 @@ export function remove(id: string): Promise<void> {
     const current = store.get(id);
     if (!current) return;
     store.delete(id);
-    envs.delete(id);
     await syncRoutes();
     await pm2.remove(current.release);
     await removeRelease(current.repo, id, current.release);
@@ -317,16 +313,6 @@ export function find(id: string): Release {
 export async function removeRepo(repo: string): Promise<void> {
   for (const r of store.all().filter((r) => r.repo === repo)) await remove(r.id);
   deleteRepo(repo);
-}
-
-export async function onPush(repo: string, ref: string): Promise<void> {
-  for (const r of store.all().filter((r) => r.repo === repo && r.ref === ref)) {
-    const env = envs.get(r.id);
-    if (!env) continue;
-    await deploy(r.id, { repo, ref, host: r.host, service: r.service, env }).catch((error) =>
-      console.error(`push redeploy of ${r.id} failed: ${toApiError(error).message}`),
-    );
-  }
 }
 
 export async function reconcile(): Promise<void> {

@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { Deployment, ID_PATTERN, REF_PATTERN, REPO_PATTERN, type Phase } from "./contract";
+import { Deployment, ID_PATTERN, REPO_PATTERN, type Phase } from "./contract";
 import { config } from "./config";
 import * as deployments from "./deploy";
 import { toApiError } from "./errors";
@@ -110,12 +110,4 @@ export const localRoutes = new Elysia()
       projectId: config.projectId,
       organizationId: config.organizationId,
     };
-  })
-  .post(
-    "/hooks/push",
-    ({ body, set }) => {
-      void deployments.onPush(body.repo, body.ref);
-      set.status = 202;
-    },
-    { body: t.Object({ repo: t.String({ pattern: REPO_PATTERN }), ref: t.String({ pattern: REF_PATTERN }) }) },
-  );
+  });

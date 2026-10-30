@@ -73,7 +73,7 @@ everything safely. Push URL: `ssh://<projectId>@<git host>/app/repos/<repo>.git`
 A failure before the swap deletes only the new release; the old one keeps serving. Releases are
 never moved. A Node app sent without `build`/`start` runs its `dev` script.
 
-`git push` to a deployed branch redeploys it (post-receive hook). On boot the agent asks the backend
+A push only stores the code: deploys happen when the CLI asks the backend. On boot the agent asks the backend
 for the desired deployments (`GET /internal/projects/:projectId/deployments`) and applies them.
 
 ## Container layout
