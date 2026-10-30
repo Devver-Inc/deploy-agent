@@ -1,15 +1,20 @@
+const env = process.env;
+
 export const config = {
+  port: Number(env.PORT ?? 8080),
+  secret: env.DEVVER_SECRET,
+  projectId: env.DEVVER_PROJECT_ID,
+  organizationId: env.DEVVER_ORGANIZATION_ID,
+  previewDomain: env.DEVVER_PREVIEW_DOMAIN?.toLowerCase(),
+  widgetUrl: env.DEVVER_WIDGET_URL ?? "",
+  backendUrl: env.DEVVER_BACKEND_URL?.replace(/\/+$/, ""),
+  mongoUrl: env.DEVVER_MONGO_CONNECTION_STRING,
   paths: {
-    deployments: "/app/deployments",
     repos: "/app/repos",
-    pm2Data: "/app/data/pm2",
-    portsFile: "/app/data/ports.json",
-    reposFile: "/app/data/repos.json",
-    nginxConfDir: "/app/nginx/conf.d",
+    deployments: "/app/deployments",
+    caches: "/app/caches",
+    store: "/app/data/deployments.json",
+    routes: "/app/nginx/routes.map",
+    widget: "/app/nginx/widget.conf",
   },
-  databases: {
-    mongo: process.env.DEVVER_MONGO_CONNECTION_STRING,
-    postgres: process.env.DEVVER_POSTGRES_CONNECTION_STRING,
-    redis: process.env.DEVVER_REDIS_CONNECTION_STRING,
-  },
-} as const;
+};

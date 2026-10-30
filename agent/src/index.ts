@@ -1,94 +1,49 @@
-import { Elysia, t } from "elysia";
-import { repoRoutes } from "./routes/repos";
-import { deploymentRoutes } from "./routes/deployments";
-import { logRoutes } from "./routes/logs";
-import { databaseRoutes } from "./routes/databases";
-import { gitAuthRoutes } from "./middleware/git-auth";
+import { Elysia } from "elysia";
 import { timingSafeEqual } from "crypto";
-import { ApplicationError } from "./errors/application-error";
-import { toApiError } from "./utils/api-error";
+import { config } from "./config";
+import { reconcile } from "./deploy";
+import { AgentError, toApiError } from "./errors";
+import { syncRoutes, writeWidgetConf } from "./nginx";
+import { localRoutes, routes } from "./routes";
 
-const DEVVER_SECRET = process.env.DEVVER_SECRET;
-if (!DEVVER_SECRET) {
-  throw new Error("DEVVER_SECRET environment variable is required");
+const { secret, previewDomain, projectId } = config;
+if (!secret || !previewDomain || !projectId) {
+  throw new Error("DEVVER_SECRET, DEVVER_PREVIEW_DOMAIN and DEVVER_PROJECT_ID are required");
 }
-const EXPECTED_DEVVER_SECRET = DEVVER_SECRET;
-const PORT = process.env.PORT ?? 8080;
+const expected = Buffer.from(secret);
+const PUBLIC_PATHS = new Set(["/health", "/__devver/context"]);
 
 function matchesSecret(candidate: string | null): boolean {
-  if (!candidate) return false;
-  const expected = Buffer.from(EXPECTED_DEVVER_SECRET);
-  const received = Buffer.from(candidate);
-  return (
-    expected.length === received.length && timingSafeEqual(expected, received)
-  );
+  const received = Buffer.from(candidate ?? "");
+  return expected.length === received.length && timingSafeEqual(expected, received);
 }
 
 const app = new Elysia()
   .onError(({ code, error, set }) => {
     if (code === "VALIDATION") {
       set.status = 422;
-      return {
-        success: false as const,
-        error: {
-          code: "VALIDATION_ERROR",
-          message: error.message,
-        },
-      };
+      return { code: "VALIDATION_ERROR", message: error.message };
     }
-
-    if (error instanceof ApplicationError) {
-      const normalized = toApiError(error, {
-        code: "REQUEST_FAILED",
-        message: "Request failed.",
-      });
-      set.status = normalized.status;
-      return normalized.body;
+    if (code === "NOT_FOUND") {
+      set.status = 404;
+      return { code: "NOT_FOUND", message: "Not found." };
     }
+    set.status = error instanceof AgentError ? error.status : 500;
+    return toApiError(error);
   })
-
-  .onBeforeHandle(({ request, set, path }) => {
-    if (path === "/health" || path === "/internal/git-auth") return;
-
-    // Non-git paths: validate shared secret
-    const secret = request.headers.get("x-devver-secret");
-    if (!matchesSecret(secret)) {
-      set.status = 401;
-      return {
-        success: false as const,
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Unauthorized",
-        },
-      };
-    }
+  .onBeforeHandle(({ request, path, set }) => {
+    if (PUBLIC_PATHS.has(path) || matchesSecret(request.headers.get("x-devver-secret"))) return;
+    set.status = 401;
+    return { code: "UNAUTHORIZED", message: "Unauthorized." };
   })
+  .use(localRoutes)
+  .use(routes)
+  .listen(config.port);
 
-  .use(gitAuthRoutes)
-
-  .get(
-    "/health",
-    () => ({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-    }),
-    {
-      response: t.Object({
-        status: t.String(),
-        timestamp: t.String(),
-        uptime: t.Number(),
-      }),
-    },
-  )
-
-  .use(repoRoutes)
-  .use(deploymentRoutes)
-  .use(logRoutes)
-  .use(databaseRoutes)
-
-  .listen(PORT);
-
-console.log(`Deploy Agent running on port ${PORT}`);
+writeWidgetConf();
+// nginx may still be starting; the file is written either way and read at its start.
+await syncRoutes().catch((error) => console.error("initial nginx reload:", String(error)));
+console.log(`Deploy Agent running on port ${config.port}`);
+void reconcile();
 
 export type App = typeof app;

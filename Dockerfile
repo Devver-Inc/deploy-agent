@@ -14,9 +14,8 @@ FROM oven/bun:1-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf
 # longer compile the runtimes themselves.
 RUN apk add --no-cache \
     git \
-    git-daemon \
-    fcgiwrap \
-    spawn-fcgi \
+    openssh-server \
+    openssh-keygen \
     nginx \
     nodejs \
     npm \
@@ -64,7 +63,7 @@ COPY --from=golang-build /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # ─── Global JS tooling ───────────────────────────────────────────
-RUN npm install -g pm2@7.0.3 vite@8.2.0
+RUN npm install -g pm2@7.0.3
 
 RUN node --version && \
     bun --version && \
@@ -78,7 +77,7 @@ RUN node --version && \
 RUN mkdir -p /app/repos \
     /app/deployments \
     /app/data \
-    /app/nginx/conf.d \
+    /app/nginx \
     /app/caches/npm \
     /app/caches/bun \
     /app/caches/pip \
@@ -98,8 +97,9 @@ RUN bun install --frozen-lockfile
 RUN bun run build && mv ./deploy-agent /usr/local/bin/deploy-agent
 
 # ─── User setup ─────────────────────────────────────────────────
-RUN adduser -D -s /bin/sh -h /home/git git \
-    && passwd -u git \
+# password "*": sshd pubkey login works, password login and `su git` do not.
+RUN adduser -D -s /usr/bin/git-shell -h /home/git git \
+    && echo 'git:*' | chpasswd -e \
     && addgroup -g 10001 deploy \
     && adduser -D -u 10001 -G deploy -s /bin/sh -h /home/deploy deploy
 
@@ -107,20 +107,18 @@ RUN chown -R git:git /app/repos \
     && chown -R deploy:deploy /app/deployments /app/caches \
     && chown -R root:root /app/agent /app/data /app/nginx
 
-# Git safe directories
-RUN git config --global --add safe.directory '/app/repos/*' \
-    && git config --global --add safe.directory '/app/deployments/*'
+# root runs git only against the bare repos (never inside a release directory).
+RUN git config --global --add safe.directory '/app/repos/*'
 
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY sshd_config /etc/ssh/sshd_config
+COPY ecosystem.config.cjs /etc/devver/ecosystem.config.cjs
 
 WORKDIR /app
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 80 8080
-
-HEALTHCHECK --interval=30s --timeout=3s \
-    CMD curl -f http://localhost:8080/health || exit 1
+EXPOSE 80 22 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
