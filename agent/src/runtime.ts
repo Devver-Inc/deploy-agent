@@ -71,9 +71,11 @@ function readProcfileStart(servicePath: string): string | undefined {
     .trim();
 }
 
+type PackageManager = "bun" | "npm" | "pnpm";
+
 function readNodeScript(
   servicePath: string,
-  packageManager: "bun" | "npm",
+  packageManager: PackageManager,
   script: "start" | "dev",
 ): { command: string; needsCliPort: boolean } | undefined {
   try {
@@ -103,6 +105,8 @@ function nodeEnvironment(
     npm_config_fund: "false",
     npm_config_update_notifier: "false",
     BUN_INSTALL_CACHE_DIR: "/app/caches/bun",
+    // Same volume as the releases, so pnpm hardlinks packages from its store.
+    npm_config_store_dir: "/app/caches/pnpm",
     ...(phase === "run" ? { NODE_ENV: "production" } : {}),
   };
 }
@@ -151,7 +155,7 @@ function prepareNodeStart(
 
 function createNodePlan(
   context: RuntimeDetectionContext,
-  packageManager: "bun" | "npm",
+  packageManager: PackageManager,
   installCommand: string,
 ): RuntimePlan {
   const start = readNodeScript(context.servicePath, packageManager, "start");
@@ -190,6 +194,13 @@ const runtimeStrategies: readonly RuntimeStrategy[] = [
       (hasFile(servicePath, "bun.lock") || hasFile(servicePath, "bun.lockb")),
     resolve: (context) =>
       createNodePlan(context, "bun", "bun install --frozen-lockfile"),
+  },
+  {
+    matches: ({ servicePath }) =>
+      hasFile(servicePath, "package.json") &&
+      hasFile(servicePath, "pnpm-lock.yaml"),
+    resolve: (context) =>
+      createNodePlan(context, "pnpm", "pnpm install --frozen-lockfile"),
   },
   {
     matches: ({ servicePath }) =>

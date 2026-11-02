@@ -2,7 +2,7 @@
 set -e
 
 mkdir -p /app/data /app/repos /app/deployments /app/nginx \
-         /app/caches/npm /app/caches/bun /app/caches/pip \
+         /app/caches/npm /app/caches/pnpm /app/caches/bun /app/caches/pip \
          /app/caches/gem /app/caches/go/build /app/caches/go/pkg/mod
 touch /app/nginx/routes.map /app/nginx/widget.conf
 

@@ -8,6 +8,7 @@ import { routesMap, widgetConf } from "./nginx";
 import { wrapperScript } from "./pm2";
 import { run, userEnv } from "./utils/exec";
 import { resolvePathWithin } from "./utils/validation";
+import { resolveRuntime } from "./runtime";
 
 test("user commands never see the agent's env", async () => {
   process.env.DEVVER_SECRET = "leak";
@@ -84,4 +85,32 @@ test("pruning keeps hashes in use and folders still being published", () => {
   pruneShared(new Set([used]), root);
   expect(readdirSync(join(root, "node_modules")).sort()).toEqual([used, publishing].sort());
   expect(readdirSync(join(root, "venvs"))).toEqual([]);
+});
+
+test("only dependency changes alter the lock hash", () => {
+  const project = (pkg: object, lock: object) => {
+    const dir = mkdtempSync(join(tmpdir(), "deps-"));
+    writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
+    writeFileSync(join(dir, "package-lock.json"), JSON.stringify(lock));
+    return lockHash(dir);
+  };
+  const lock = (version: string, ms = "2.1.3") => ({
+    name: "app", version, lockfileVersion: 3,
+    packages: { "": { name: "app", version, dependencies: { ms } }, "node_modules/ms": { version: ms } },
+  });
+  const base = project({ name: "app", version: "1.0.0", scripts: { start: "node ." }, dependencies: { ms: "2.1.3" } }, lock("1.0.0"));
+  const scriptAndVersion = project({ name: "app", version: "1.1.0", scripts: { start: "node .", runX: "x" }, dependencies: { ms: "2.1.3" } }, lock("1.1.0"));
+  const newDependency = project({ name: "app", version: "1.0.0", scripts: { start: "node ." }, dependencies: { ms: "2.1.2" } }, lock("1.0.0", "2.1.2"));
+  expect(scriptAndVersion).toBe(base);
+  expect(newDependency).not.toBe(base);
+});
+
+test("pnpm projects install with their own lockfile", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pnpm-"));
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { start: "node ." } }));
+  writeFileSync(join(dir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+  const plan = resolveRuntime(dir)!;
+  expect(plan.id).toBe("node/pnpm");
+  expect(plan.installCommand).toBe("pnpm install --frozen-lockfile");
+  expect(plan.startCommand).toBe("pnpm run start");
 });

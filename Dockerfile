@@ -63,7 +63,7 @@ COPY --from=golang-build /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # ─── Global JS tooling ───────────────────────────────────────────
-RUN npm install -g pm2@7.0.3
+RUN npm install -g pm2@7.0.3 pnpm@10.11.0
 
 RUN node --version && \
     bun --version && \
@@ -79,6 +79,7 @@ RUN mkdir -p /app/repos \
     /app/data \
     /app/nginx \
     /app/caches/npm \
+    /app/caches/pnpm \
     /app/caches/bun \
     /app/caches/pip \
     /app/caches/gem \

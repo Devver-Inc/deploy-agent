@@ -24,12 +24,35 @@ const LOCKFILES = [
   "requirements.txt", "pyproject.toml", "poetry.lock", "Gemfile", "Gemfile.lock", "go.mod", "go.sum",
 ];
 const BUILD_CACHES = [".next/cache", "node_modules/.vite", "node_modules/.cache"];
+const DEPENDENCY_FIELDS = [
+  "dependencies", "devDependencies", "optionalDependencies", "peerDependencies",
+  "overrides", "resolutions", "workspaces", "packageManager",
+];
+
+// Only what decides the installed packages: a new script or a version bump must not
+// reinstall. package-lock.json repeats the project's own name and version.
+// ponytail: pyproject.toml is hashed whole (its version too); filter it if that costs reinstalls.
+function dependencyInput(file: string, content: Buffer): string | Buffer {
+  if (file !== "package.json" && file !== "package-lock.json") return content;
+  try {
+    const json = JSON.parse(content.toString());
+    if (file === "package.json") return JSON.stringify(DEPENDENCY_FIELDS.map((f) => json[f] ?? null));
+    const { name: _name, version: _version, packages, ...rest } = json;
+    if (packages?.[""]) {
+      const { name: _n, version: _v, ...root } = packages[""];
+      return JSON.stringify({ ...rest, packages: { ...packages, "": root } });
+    }
+    return JSON.stringify(rest);
+  } catch {
+    return content;
+  }
+}
 
 export function lockHash(servicePath: string, root = "."): string {
   const hash = createHash("sha256").update(root);
   for (const file of LOCKFILES) {
     const path = join(servicePath, file);
-    if (existsSync(path)) hash.update(file).update(readFileSync(path));
+    if (existsSync(path)) hash.update(file).update(dependencyInput(file, readFileSync(path)));
   }
   return hash.digest("hex");
 }
