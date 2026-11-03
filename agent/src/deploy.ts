@@ -7,6 +7,7 @@ import { config } from "./config";
 import { AgentError, toApiError } from "./errors";
 import { addRelease, createRepo, deleteRepo, releaseDir, removeRelease, resolveCommit } from "./git";
 import { syncRoutes } from "./nginx";
+import * as npmStore from "./npm-store";
 import * as pm2 from "./pm2";
 import { resolveRuntime } from "./runtime";
 import { store, type Release } from "./store";
@@ -31,7 +32,6 @@ const DEPENDENCY_FIELDS = [
 
 // Only what decides the installed packages: a new script or a version bump must not
 // reinstall. package-lock.json repeats the project's own name and version.
-// ponytail: pyproject.toml is hashed whole (its version too); filter it if that costs reinstalls.
 function dependencyInput(file: string, content: Buffer): string | Buffer {
   if (file !== "package.json" && file !== "package-lock.json") return content;
   try {
@@ -106,11 +106,21 @@ const sharedDir = (kind: "node_modules" | "venvs", hash: string) =>
 // build must not write into it: these build caches stay per release.
 const NODE_MODULES_CACHES = [".vite", ".cache"];
 
-async function sharedNodeModules(servicePath: string, hash: string, install: () => Promise<void>) {
+// `npm ci` would delete the seeded node_modules.
+const NPM_INSTALL_ON_SEED = "npm install --no-save";
+
+async function sharedNodeModules(
+  servicePath: string,
+  hash: string,
+  install: (command?: string) => Promise<void>,
+  useNpmStore: boolean,
+) {
   const shared = sharedDir("node_modules", hash);
   if (existsSync(shared)) return cpInto("-al", shared, join(servicePath, "node_modules"));
 
-  await install();
+  const seeded = useNpmStore && (await npmStore.seed(servicePath)) > 0;
+  await install(seeded ? NPM_INSTALL_ON_SEED : undefined);
+  if (useNpmStore) await npmStore.ingest(servicePath);
   const tmp = `${shared}.tmp-${Date.now().toString(36)}`;
   await cpInto("-al", join(servicePath, "node_modules"), tmp);
   for (const cache of NODE_MODULES_CACHES) rmSync(join(tmp, cache), { recursive: true, force: true });
@@ -164,6 +174,8 @@ export function pruneShared(keep: Set<string>, root = config.paths.caches): void
       }
     }
   }
+  // After the shared folders: they hold links to store packages too.
+  npmStore.pruneStore(join(root, npmStore.STORE));
 }
 
 function pruneUnused(): void {
@@ -250,11 +262,11 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
     const hash = lockHash(servicePath, spec.service.root);
     pinned = hash;
     inFlight.push(hash);
-    const install = async () => {
-      if (service.install) await userStep("INSTALL_FAILED", service.install, servicePath, env("install"));
+    const install = async (command = service.install) => {
+      if (command) await userStep("INSTALL_FAILED", command, servicePath, env("install"));
     };
-    // ponytail: Ruby (.bundle) reinstalls every release; Go's module cache is already global.
-    if (runtime?.id.startsWith("node/")) await sharedNodeModules(servicePath, hash, install);
+    const useNpmStore = runtime?.id === "node/npm" && service.install === runtime.installCommand;
+    if (runtime?.id.startsWith("node/")) await sharedNodeModules(servicePath, hash, install, useNpmStore);
     else if (runtime?.id.startsWith("python/")) await sharedVenv(servicePath, hash, install);
     else await install();
     phase("install");

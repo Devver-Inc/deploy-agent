@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "fs";
+import { linkSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { HOST_PATTERN, ID_PATTERN, REF_PATTERN } from "./contract";
 import { envHash, lockHash, pruneShared } from "./deploy";
 import { routesMap, widgetConf } from "./nginx";
+import { lockEntries, pruneStore, seedScript } from "./npm-store";
 import { wrapperScript } from "./pm2";
 import { run, userEnv } from "./utils/exec";
 import { resolvePathWithin } from "./utils/validation";
@@ -103,6 +104,43 @@ test("only dependency changes alter the lock hash", () => {
   const newDependency = project({ name: "app", version: "1.0.0", scripts: { start: "node ." }, dependencies: { ms: "2.1.2" } }, lock("1.0.0", "2.1.2"));
   expect(scriptAndVersion).toBe(base);
   expect(newDependency).not.toBe(base);
+});
+
+test("the npm store seeds lockfile packages by integrity and rejects paths that escape", () => {
+  const dir = mkdtempSync(join(tmpdir(), "store-"));
+  writeFileSync(join(dir, "package-lock.json"), JSON.stringify({
+    lockfileVersion: 3,
+    packages: {
+      "": { name: "app" },
+      "node_modules/@scope/tool": { integrity: "sha512-a", bin: { tool: "bin/tool.js", "../x": "y" } },
+      "node_modules/@scope/tool/node_modules/dep": { integrity: "sha512-b" },
+      "node_modules/../../etc": { integrity: "sha512-c" },
+      "node_modules/evil": { integrity: "sha512-d", bin: { evil: "../../../etc/passwd" } },
+      "node_modules/bundler": { integrity: "sha512-e" },
+      "node_modules/bundler/node_modules/inner": { inBundle: true },
+    },
+  }));
+  const entries = lockEntries(dir);
+  expect(entries.map((e) => e.path)).toEqual([
+    "node_modules/evil", "node_modules/@scope/tool", "node_modules/@scope/tool/node_modules/dep",
+  ]);
+  expect(entries.find((e) => e.path === "node_modules/evil")!.bins).toEqual([]);
+  const script = seedScript("/r", "/s", entries);
+  expect(script).toContain("ln -sfn '../@scope/tool/bin/tool.js' '/r/node_modules/.bin/tool'");
+  expect(script).not.toContain("etc");
+});
+
+test("store packages linked from no release are pruned", () => {
+  const root = mkdtempSync(join(tmpdir(), "caches-"));
+  const store = join(root, "npm-store"), used = join(store, "a".repeat(64)), unused = join(store, "b".repeat(64));
+  for (const pkg of [used, unused]) {
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(pkg, "package.json"), "{}");
+  }
+  mkdirSync(join(root, "release"));
+  linkSync(join(used, "package.json"), join(root, "release", "package.json"));
+  pruneStore(store);
+  expect(readdirSync(store)).toEqual(["a".repeat(64)]);
 });
 
 test("pnpm projects install with their own lockfile", () => {
