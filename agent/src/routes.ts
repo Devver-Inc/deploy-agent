@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { Deployment, ID_PATTERN, REPO_PATTERN, type Phase } from "./contract";
+import { Deployment, ID_PATTERN, REF_PATTERN, REPO_PATTERN } from "./contract";
 import { config } from "./config";
 import * as deployments from "./deploy";
 import { toApiError } from "./errors";
@@ -13,38 +13,57 @@ const encoder = new TextEncoder();
 const sse = (event: string, data: unknown) =>
   encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
+function phaseStream(label: string, work: (emit: deployments.Emit) => Promise<unknown>): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const emit: deployments.Emit = (phase, durationMs) => controller.enqueue(sse("phase", { phase, durationMs }));
+      // Installs and health checks can stay silent for a minute; idle connections get cut.
+      const heartbeat = setInterval(() => controller.enqueue(encoder.encode(": ping\n\n")), 10_000);
+      try {
+        controller.enqueue(sse("done", await work(emit)));
+      } catch (error) {
+        console.error(`${label} failed: ${toApiError(error).message}`);
+        controller.enqueue(sse("failed", toApiError(error)));
+      } finally {
+        clearInterval(heartbeat);
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      "x-accel-buffering": "no",
+    },
+  });
+}
+
 export const routes = new Elysia()
   .put(
     "/deployments/:id",
     async ({ params, body }) => {
       await createRepo(body.repo);
       await resolveCommit(body.repo, body.ref);
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          const emit = (phase: Phase, durationMs: number) =>
-            controller.enqueue(sse("phase", { phase, durationMs }));
-          // Installs and health checks can stay silent for a minute; idle connections get cut.
-          const heartbeat = setInterval(() => controller.enqueue(encoder.encode(": ping\n\n")), 10_000);
-          try {
-            controller.enqueue(sse("done", await deployments.deploy(params.id, body, emit)));
-          } catch (error) {
-            console.error(`deploy ${params.id} failed: ${toApiError(error).message}`);
-            controller.enqueue(sse("failed", toApiError(error)));
-          } finally {
-            clearInterval(heartbeat);
-          }
-          controller.close();
-        },
-      });
-      return new Response(stream, {
-        headers: {
-          "content-type": "text/event-stream",
-          "cache-control": "no-cache",
-          "x-accel-buffering": "no",
-        },
-      });
+      return phaseStream(`deploy ${params.id}`, (emit) => deployments.deploy(params.id, body, emit));
     },
     { params: idParams, body: Deployment },
+  )
+  .post(
+    "/repos/:name/prepare",
+    async ({ params, body }) => {
+      await resolveCommit(params.name, body.ref);
+      return phaseStream(`prepare ${params.name}`, (emit) =>
+        deployments.prepare(params.name, body.ref, body.service, emit),
+      );
+    },
+    {
+      params: t.Object({ name: t.String({ pattern: REPO_PATTERN }) }),
+      body: t.Object({
+        ref: t.String({ pattern: REF_PATTERN }),
+        service: t.Object({ root: t.Optional(t.String()), install: t.Optional(t.String()) }),
+      }),
+    },
   )
   .get("/deployments", () => deployments.list())
   .delete(

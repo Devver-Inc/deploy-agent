@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createServer, type AddressInfo } from "net";
 import { dirname, join } from "path";
-import type { Deployment, DeploymentStatus, Phase } from "./contract";
+import type { Deployment, DeploymentStatus, Phase, ServiceSpec } from "./contract";
 import { config } from "./config";
 import { AgentError, toApiError } from "./errors";
 import { addRelease, createRepo, deleteRepo, releaseDir, removeRelease, resolveCommit } from "./git";
@@ -16,7 +16,7 @@ import { run, runUserCommand } from "./utils/exec";
 import { pollUntil } from "./utils/poll-until";
 import { resolvePathWithin } from "./utils/validation";
 
-type Emit = (phase: Phase, durationMs: number) => void;
+export type Emit = (phase: Phase, durationMs: number) => void;
 
 const lock = new KeyedAsyncMutex();
 
@@ -109,40 +109,38 @@ const NODE_MODULES_CACHES = [".vite", ".cache"];
 // `npm ci` would delete the seeded node_modules.
 const NPM_INSTALL_ON_SEED = "npm install --no-save";
 
-async function sharedNodeModules(
+// Per hash: a deploy waits for a prepare (or another deploy) installing the same lockfile.
+const depsLock = new KeyedAsyncMutex();
+
+function sharedNodeModules(
   servicePath: string,
   hash: string,
   install: (command?: string) => Promise<void>,
   useNpmStore: boolean,
 ) {
   const shared = sharedDir("node_modules", hash);
-  if (existsSync(shared)) return cpInto("-al", shared, join(servicePath, "node_modules"));
+  return depsLock.run(`node_modules:${hash}`, async () => {
+    if (existsSync(shared)) return cpInto("-al", shared, join(servicePath, "node_modules"));
 
-  const seeded = useNpmStore && (await npmStore.seed(servicePath)) > 0;
-  await install(seeded ? NPM_INSTALL_ON_SEED : undefined);
-  if (useNpmStore) await npmStore.ingest(servicePath);
-  const tmp = `${shared}.tmp-${Date.now().toString(36)}`;
-  await cpInto("-al", join(servicePath, "node_modules"), tmp);
-  for (const cache of NODE_MODULES_CACHES) rmSync(join(tmp, cache), { recursive: true, force: true });
-  try {
+    const seeded = useNpmStore && (await npmStore.seed(servicePath)) > 0;
+    await install(seeded ? NPM_INSTALL_ON_SEED : undefined);
+    if (useNpmStore) await npmStore.ingest(servicePath);
+    const tmp = `${shared}.tmp-${Date.now().toString(36)}`;
+    await cpInto("-al", join(servicePath, "node_modules"), tmp);
+    for (const cache of NODE_MODULES_CACHES) rmSync(join(tmp, cache), { recursive: true, force: true });
     renameSync(tmp, shared);
-  } catch {
-    // Another deploy with the same hash published it first.
-    rmSync(tmp, { recursive: true, force: true });
-  }
+  });
 }
 
 // A virtualenv stores absolute paths, so it is built in place (no temp + rename)
-// under a per-hash lock, and `.ready` marks it complete.
-const venvLock = new KeyedAsyncMutex();
-
+// and `.ready` marks it complete.
 async function sharedVenv(servicePath: string, hash: string, install: () => Promise<void>) {
   const shared = sharedDir("venvs", hash);
   const link = async () => {
     rmSync(join(servicePath, ".venv"), { recursive: true, force: true });
     await run(["ln", "-s", shared, join(servicePath, ".venv")], { user: "deploy" });
   };
-  await venvLock.run(hash, async () => {
+  await depsLock.run(`venvs:${hash}`, async () => {
     if (existsSync(join(shared, ".ready"))) return link();
     rmSync(shared, { recursive: true, force: true });
     await run(["mkdir", "-p", dirname(shared)], { user: "deploy" });
@@ -178,8 +176,40 @@ export function pruneShared(keep: Set<string>, root = config.paths.caches): void
   npmStore.pruneStore(join(root, npmStore.STORE));
 }
 
+// A prepared install has no release yet; it waits this long for its first deploy.
+const PREPARED_TTL_MS = 60 * 60 * 1000;
+const prepared = new Map<string, number>();
+
 function pruneUnused(): void {
-  pruneShared(new Set([...store.all().map((r) => r.lockHash ?? ""), ...inFlight]));
+  const now = Date.now();
+  for (const [hash, until] of prepared) if (until < now) prepared.delete(hash);
+  pruneShared(new Set([...store.all().map((r) => r.lockHash ?? ""), ...inFlight, ...prepared.keys()]));
+}
+
+type Runtime = ReturnType<typeof resolveRuntime>;
+
+async function installDependencies(
+  servicePath: string,
+  hash: string,
+  runtime: Runtime,
+  installCommand: string | undefined,
+  env: Record<string, string>,
+): Promise<void> {
+  const install = async (command = installCommand) => {
+    if (command) await userStep("INSTALL_FAILED", command, servicePath, env);
+  };
+  const useNpmStore = runtime?.id === "node/npm" && installCommand === runtime.installCommand;
+  if (runtime?.id.startsWith("node/")) await sharedNodeModules(servicePath, hash, install, useNpmStore);
+  else if (runtime?.id.startsWith("python/")) await sharedVenv(servicePath, hash, install);
+  else await install();
+}
+
+function serviceDir(dir: string, root: string | undefined): string {
+  try {
+    return resolvePathWithin(dir, root);
+  } catch {
+    throw new AgentError(400, "INVALID_ROOT", "service.root must stay inside the repository.");
+  }
 }
 
 async function userStep(code: string, command: string, cwd: string, env: Record<string, string>) {
@@ -211,6 +241,47 @@ async function waitHealthy(name: string, port: number, timeoutMs = 60_000): Prom
   }
 }
 
+// Never matches ID_PATTERN, so it cannot collide with a deployment.
+const PREPARE_ID = "_prepare";
+
+export interface Prepared {
+  commit: string;
+  lockHash: string;
+  runtime: string | null;
+  install?: string;
+  start?: string;
+  dev?: string;
+}
+
+export async function prepare(repo: string, ref: string, spec: Pick<ServiceSpec, "root" | "install">, emit: Emit = () => {}): Promise<Prepared> {
+  let clock = Date.now();
+  const phase = (p: Phase) => {
+    emit(p, Date.now() - clock);
+    clock = Date.now();
+  };
+  const commit = await resolveCommit(repo, ref);
+  const release = `${repo}.${Date.now().toString(36)}`;
+  const dir = await addRelease(repo, PREPARE_ID, release, commit);
+  let pinned: string | undefined;
+  try {
+    const servicePath = serviceDir(dir, spec.root);
+    const runtime = resolveRuntime(servicePath);
+    const install = spec.install ?? runtime?.installCommand;
+    phase("checkout");
+
+    const hash = lockHash(servicePath, spec.root);
+    pinned = hash;
+    inFlight.push(hash);
+    await installDependencies(servicePath, hash, runtime, install, runtime?.environment(servicePath, "install") ?? {});
+    prepared.set(hash, Date.now() + PREPARED_TTL_MS);
+    phase("install");
+    return { commit, lockHash: hash, runtime: runtime?.id ?? null, install, start: runtime?.startCommand, dev: runtime?.devCommand };
+  } finally {
+    if (pinned) inFlight.splice(inFlight.indexOf(pinned), 1);
+    await removeRelease(repo, PREPARE_ID, release);
+  }
+}
+
 export function deploy(id: string, spec: Deployment, emit: Emit = () => {}) {
   return lock.run(id, () => deployLocked(id, spec, emit));
 }
@@ -234,12 +305,7 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
   const dir = await addRelease(spec.repo, id, release, commit);
   let pinned: string | undefined;
   try {
-    let servicePath: string;
-    try {
-      servicePath = resolvePathWithin(dir, spec.service.root);
-    } catch {
-      throw new AgentError(400, "INVALID_ROOT", "service.root must stay inside the repository.");
-    }
+    const servicePath = serviceDir(dir, spec.service.root);
     const runtime = resolveRuntime(servicePath);
     const service = { ...spec.service };
     const dev = !!runtime?.devCommand && !service.build && !service.start;
@@ -262,13 +328,7 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
     const hash = lockHash(servicePath, spec.service.root);
     pinned = hash;
     inFlight.push(hash);
-    const install = async (command = service.install) => {
-      if (command) await userStep("INSTALL_FAILED", command, servicePath, env("install"));
-    };
-    const useNpmStore = runtime?.id === "node/npm" && service.install === runtime.installCommand;
-    if (runtime?.id.startsWith("node/")) await sharedNodeModules(servicePath, hash, install, useNpmStore);
-    else if (runtime?.id.startsWith("python/")) await sharedVenv(servicePath, hash, install);
-    else await install();
+    await installDependencies(servicePath, hash, runtime, service.install, env("install"));
     phase("install");
 
     const previous = current && existsSync(releaseDir(id, current.release)) ? servicePathOf(current) : undefined;
