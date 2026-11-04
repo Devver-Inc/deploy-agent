@@ -1,222 +1,96 @@
 # Deploy Agent
 
-Containerized deploy agent that manages Git repositories, per-branch deployments and PM2 processes — with Nginx as reverse proxy.
+One container per project. It holds the project's bare Git repos, runs every deployment
+(branch × service) as a PM2 process and serves each one on its own preview host through nginx.
+
+The agent is an executor: the backend says "run this ref with these commands on this host"
+and the agent makes it exist. Ids, hosts and the user env come from the backend.
 
 ## Stack
 
-- **Runtime:** [Bun](https://bun.sh)
-- **Framework:** [Elysia](https://elysiajs.com)
-- **Process Manager:** PM2
-- **Reverse Proxy:** Nginx
-- **Git Backend:** git-http-backend via fcgiwrap
-- **Container:** Alpine Linux (Docker)
+- **Runtime:** [Bun](https://bun.sh) + [Elysia](https://elysiajs.com)
+- **Processes:** PM2 (`pm2-runtime` is PID 1 and supervises nginx, sshd and the agent)
+- **Proxy:** nginx, one static server with a `map $host → port`
+- **Git:** sshd + git-shell, reached only through the git-gateway
+- **Container:** Alpine Linux
 
-## Prerequisites
+## Ports
 
-- Docker & Docker Compose
-- (Local dev) Bun >= 1.x, Node.js >= 18
+| Port | Who reaches it | Serves |
+| ---- | -------------- | ------ |
+| 80   | Internet (Traefik `*.preview` route) | Previews only; unknown hosts get 404 |
+| 8080 | backend only (Service + NetworkPolicy) | Agent API, `x-devver-secret` header |
+| 22   | git-gateway only (NetworkPolicy) | `git push` |
 
-## Quick Start
+## Environment Variables
 
-### Docker (production)
+| Variable | Required | Description |
+| -------- | -------- | ----------- |
+| `DEVVER_SECRET` | **Yes** | Per-project API token (from Vault through ESO) |
+| `DEVVER_PROJECT_ID` | **Yes** | Project id; suffix of every preview host |
+| `DEVVER_PREVIEW_DOMAIN` | **Yes** | e.g. `preview.devver.app` |
+| `DEVVER_ORGANIZATION_ID` | No | Returned by `/__devver/context` |
+| `DEVVER_BACKEND_URL` | No | Internal backend URL; enables the boot reconcile |
+| `DEVVER_WIDGET_URL` | No | Overlay script injected before `</body>` |
+| `DEVVER_GIT_GATEWAY_PUBLIC_KEY` | No | The only key sshd accepts. Unset: no SSH access |
+| `DEVVER_MONGO_CONNECTION_STRING` | No | Used by `GET /databases/mongo` |
 
-```bash
-docker compose up -d
+User code never sees these: install, build and start get only `PATH`, `HOME`, `LANG`, `TZ`,
+the runtime's cache variables, `PORT`/`HOST` and the deployment's own env.
+
+## API
+
+Types: [agent/src/contract.ts](agent/src/contract.ts). Every error is `{ code, message, logs? }`.
+
+| Method | Path | Result |
+| ------ | ---- | ------ |
+| `PUT` | `/deployments/:id` | `text/event-stream`: `phase`… then `done` (status) or `failed` (error) |
+| `GET` | `/deployments` | `DeploymentStatus[]` |
+| `DELETE` | `/deployments/:id` | 204 |
+| `POST` | `/deployments/:id/{restart,stop,start}` | 204 |
+| `GET` | `/deployments/:id/logs?tail=200` | `text/plain` |
+| `POST` / `DELETE` | `/repos/:name` | 204 (idempotent) |
+| `GET` | `/databases/mongo` | databases of the project's Mongo |
+| `GET` | `/health` | no auth |
+
+```ts
+PUT body = { repo, ref, host, service: { root?, install?, build?, start? }, env? }
+DeploymentStatus = { id, repo, ref, commit, host, status: "running" | "stopped" | "failed", startedAt }
 ```
 
-The container exposes a single port:
+The same `id` with the same commit, host and service is a no-op, so the backend can resend
+everything safely. Push URL: `ssh://<projectId>@<git host>/app/repos/<repo>.git`.
 
-| Port   | Service                                          |
-| ------ | ------------------------------------------------ |
-| `3080` | Nginx — reverse proxy for the API + Git HTTP backend |
+## How a deploy runs
 
-> The Deploy Agent API runs internally on port `8080` and is proxied by Nginx. It is not exposed to the host.
+1. **checkout:** `git worktree add --detach` of the commit into a new `deployments/<id>/<release>`.
+2. **install:** skipped when the lockfiles hash equals the running release's: `node_modules` is
+   hardlinked (`cp -al`) from it. Otherwise the runtime's install runs (caches on the same volume).
+3. **build:** `.next/cache` and `node_modules/.vite` are hardlinked from the previous release first.
+4. **start:** PM2 starts the app on a new free port; it must answer on `$PORT` within 60 s.
+5. **route:** `routes.map` is rewritten, nginx reloads, the old process and directory are deleted.
 
-### Local dev
+A failure before the swap deletes only the new release; the old one keeps serving. Releases are
+never moved. A Node app sent without `build`/`start` runs its `dev` script.
+
+A push only stores the code: deploys happen when the CLI asks the backend. On boot the agent asks the backend
+for the desired deployments (`GET /internal/projects/:projectId/deployments`) and applies them.
+
+## Container layout
+
+```
+/app
+├── repos/<repo>.git               # bare repos (git user)
+├── deployments/<id>/<release>/    # immutable releases (deploy user)
+├── caches/                        # npm/bun/pip/gem/go, same volume as deployments (hardlinks)
+├── data/deployments.json          # id → running release, port, host, commit
+└── nginx/routes.map, widget.conf  # generated
+```
+
+## Development
 
 ```bash
 cd agent
 bun install
-bun run dev   # watch mode
-```
-
-## Environment Variables
-
-| Variable            | Required | Default      | Description                                          |
-| ------------------- | -------- | ------------ | ---------------------------------------------------- |
-| `DEVVER_SECRET`     | **Yes**  | —            | API authentication secret (`x-devver-secret` header) |
-| `DEVVER_DATA_DIR`   | No       | `/app`       | Base directory for repos, deployments and data       |
-| `DEVVER_WIDGET_URL` | No       | CDN jsdelivr | Devver overlay script URL                            |
-| `DEVVER_MONGO_CONNECTION_STRING` | Mongo catalog: **Yes** | — | Mongo connection string used by `/databases/mongo` |
-| `DEVVER_POSTGRES_CONNECTION_STRING` | PostgreSQL catalog: **Yes** | — | PostgreSQL connection string used by `/databases/postgres` |
-| `DEVVER_REDIS_CONNECTION_STRING` | Redis catalog: **Yes** | — | Redis connection string used by `/databases/redis` |
-| `NODE_ENV`          | No       | —            | `production` for deploys                             |
-| `PORT`              | No       | `8080`       | Deploy Agent port                                    |
-
-## Directory Structure (container)
-
-```
-/app
-├── repos/            # Bare Git repos
-├── deployments/      # Git worktrees per deploy (branch)
-├── data/
-│   ├── ports.json    # Allocated port mappings
-│   └── repos.json    # Repo registry
-├── nginx/
-│   └── conf.d/       # Dynamic configs generated per deploy
-└── agent/            # Agent source code
-```
-
-## API
-
-All endpoints (except `/health`) require the `x-devver-secret` header.
-
-### Health
-
-```
-GET /health
-```
-
-### Repositories
-
-| Method   | Endpoint       | Description                     |
-| -------- | -------------- | ------------------------------- |
-| `GET`    | `/repos`       | List all repos                  |
-| `POST`   | `/repos`       | Create a bare Git repo          |
-| `DELETE` | `/repos/:name` | Remove repo and its deployments |
-
-**POST /repos** body:
-
-```json
-{ "name": "my-project", "baseUrl": "app.example.com" }
-```
-
-### Deployments
-
-| Method   | Endpoint                     | Description                 |
-| -------- | ---------------------------- | --------------------------- |
-| `POST`   | `/deploy`                    | Run a deployment            |
-| `GET`    | `/deployments`               | List deployments (`?repo=`) |
-| `DELETE` | `/deployments/:deploymentId` | Remove a deployment         |
-| `GET`    | `/databases/:engine`         | List Mongo, PostgreSQL or Redis databases |
-
-**POST /deploy** body:
-
-```json
-{
-  "repo": "my-project",
-  "branch": "feat/login",
-  "commit": "abc1234",
-  "projectId": "proj_xxx",
-  "organizationId": "org_xxx",
-  "overlayAccessControl": {
-    "commentPermission": "team_only"
-  },
-  "service": {
-    "web": {
-      "root": "apps/web",
-      "install": "bun install",
-      "build": "bun run build",
-      "start": "bun run start"
-    },
-    "api": {
-      "start": "bun run start"
-    }
-  },
-  "env": {
-    "DATABASE_URL": "postgres://..."
-  }
-}
-```
-
-### PM2 (process control)
-
-| Method | Endpoint       | Description           |
-| ------ | -------------- | --------------------- |
-| `POST` | `/pm2/start`   | Start a PM2 process   |
-| `POST` | `/pm2/stop`    | Stop a PM2 process    |
-| `POST` | `/pm2/restart` | Restart a PM2 process |
-
-Body: `{ "name": "pm2-process" }`
-
-### Logs
-
-```
-GET /logs/:deploymentId
-```
-
-### Databases
-
-```
-GET /databases/:engine
-```
-
-Supported engines are `mongo`, `postgres`, and `redis`. Mongo returns:
-
-```json
-[
-  {
-    "name": "app-db",
-    "sizeOnDisk": 24576,
-    "empty": false
-  }
-]
-```
-
-The legacy `/mongo/databases` route remains available during client migration.
-
-The agent uses the matching `DEVVER_*_CONNECTION_STRING` directly. A typical Mongo value is:
-
-```txt
-mongodb://root:senha@test-overlay-test-db-mongo:27017/admin?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
-```
-
-## Deploy Pipeline
-
-1. **Validation** — verifies repo, branch and service config
-2. **Worktree** — creates/updates Git worktree for the branch
-3. **Install** — runs install command (e.g. `bun install`)
-4. **Build** — runs build command (e.g. `bun run build`)
-5. **Process** — registers and starts processes via PM2
-6. **Nginx** — generates dynamic config and reloads Nginx
-
-On failure, automatic rollback reverts all completed stages.
-
-## Tests
-
-```bash
-cd agent
-bun test
-```
-
-## End-to-End Walkthrough
-
-```bash
-# 1. Health check
-curl http://localhost:3080/health
-
-# 2. Create a repo
-curl -X POST http://localhost:3080/repos \
-  -H "Content-Type: application/json" \
-  -H "x-devver-secret: dev-secret-123" \
-  -d '{"name": "my-app", "baseUrl": "app.local"}'
-
-# 3. Push code via Git HTTP
-git remote add devver http://localhost:3080/git/my-app.git
-git push devver main
-
-# 4. Deploy
-curl -X POST http://localhost:3080/deploy \
-  -H "Content-Type: application/json" \
-  -H "x-devver-secret: dev-secret-123" \
-  -d '{
-    "repo": "my-app",
-    "branch": "main",
-    "overlayAccessControl": {"commentPermission": "team_only"},
-    "service": {"web": {"start": "bun run start"}}
-  }'
-
-# 5. Check deployments
-curl http://localhost:3080/deployments \
-  -H "x-devver-secret: dev-secret-123"
+bun run typecheck && bun test
 ```
