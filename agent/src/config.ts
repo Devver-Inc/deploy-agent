@@ -14,6 +14,8 @@ export const config = {
     deployments: "/app/deployments",
     caches: "/app/caches",
     store: "/app/data/deployments.json",
+    repoState: "/app/data/repos.json",
+    queue: "/app/queue",
     routes: "/app/nginx/routes.map",
     widget: "/app/nginx/widget.conf",
   },

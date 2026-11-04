@@ -5,6 +5,7 @@ import { join } from "path";
 import { HOST_PATTERN, ID_PATTERN, REF_PATTERN } from "./contract";
 import { envHash, lockHash, pruneShared } from "./deploy";
 import { routesMap, widgetConf } from "./nginx";
+import { findApps, parsePush } from "./first-push";
 import { lockEntries, pruneStore, seedScript } from "./npm-store";
 import { wrapperScript } from "./pm2";
 import { run, userEnv } from "./utils/exec";
@@ -151,4 +152,23 @@ test("pnpm projects install with their own lockfile", () => {
   expect(plan.id).toBe("node/pnpm");
   expect(plan.installCommand).toBe("pnpm install --frozen-lockfile");
   expect(plan.startCommand).toBe("pnpm run start");
+});
+
+test("a push event yields the first updated branch and rejects forged files", () => {
+  const sha = "a".repeat(40);
+  const zero = "0".repeat(40);
+  expect(parsePush("app.42.push", `${zero} ${sha} refs/heads/main\n`)).toEqual({ repo: "app", commit: sha });
+  expect(parsePush("app.42.push", `${sha} ${zero} refs/heads/old\n${zero} ${sha} refs/heads/new\n`)).toEqual({ repo: "app", commit: sha });
+  expect(parsePush("app.42.push", `${zero} ${sha} refs/tags/v1\n`)).toBeUndefined();
+  expect(parsePush("../x.42.push", `${zero} ${sha} refs/heads/main\n`)).toBeUndefined();
+  expect(parsePush("app.42.push", `${zero} ;rm refs/heads/main\n`)).toBeUndefined();
+});
+
+test("apps: a root lockfile is one install, otherwise each manifest folder", () => {
+  expect(findApps(["package.json", "pnpm-lock.yaml", "apps/web/package.json"])).toEqual(["."]);
+  expect(findApps(["apps/web/package.json", "apps/web/src/a.ts", "apps/api/requirements.txt", "README.md"]))
+    .toEqual(["apps/api", "apps/web"]);
+  expect(findApps(["apps/web/node_modules/x/package.json", "apps/web/package.json"])).toEqual(["apps/web"]);
+  expect(findApps(["a/b/c/d/package.json"])).toEqual(["."]);
+  expect(findApps(["README.md"])).toEqual(["."]);
 });

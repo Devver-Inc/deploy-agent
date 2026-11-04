@@ -1,13 +1,14 @@
 #!/bin/sh
 set -e
 
-mkdir -p /app/data /app/repos /app/deployments /app/nginx \
+mkdir -p /app/data /app/repos /app/queue /app/deployments /app/nginx \
          /app/caches/npm /app/caches/pnpm /app/caches/bun /app/caches/pip \
          /app/caches/gem /app/caches/go/build /app/caches/go/pkg/mod
 touch /app/nginx/routes.map /app/nginx/widget.conf
 
 chown -R deploy:deploy /app/deployments /app/caches
-chown -R git:git /app/repos
+chown -R git:git /app/repos /app/queue
+chmod 700 /app/queue
 chown -R root:root /app/data /app/nginx
 chmod 700 /app/data /app/nginx
 

@@ -3,6 +3,7 @@ import { timingSafeEqual } from "crypto";
 import { config } from "./config";
 import { reconcile } from "./deploy";
 import { AgentError, toApiError } from "./errors";
+import { watchPushes } from "./first-push";
 import { syncRoutes, writeWidgetConf } from "./nginx";
 import { localRoutes, routes } from "./routes";
 
@@ -45,5 +46,6 @@ writeWidgetConf();
 await syncRoutes().catch((error) => console.error("initial nginx reload:", String(error)));
 console.log(`Deploy Agent running on port ${config.port}`);
 void reconcile();
+watchPushes();
 
 export type App = typeof app;

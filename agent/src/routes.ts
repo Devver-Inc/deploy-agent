@@ -3,6 +3,7 @@ import { Deployment, ID_PATTERN, REF_PATTERN, REPO_PATTERN } from "./contract";
 import { config } from "./config";
 import * as deployments from "./deploy";
 import { toApiError } from "./errors";
+import { forgetRepo, setRepoConfig } from "./first-push";
 import { createRepo, resolveCommit } from "./git";
 import { listMongoDatabases } from "./mongo";
 import * as pm2 from "./pm2";
@@ -97,16 +98,21 @@ export const routes = new Elysia()
   )
   .post(
     "/repos/:name",
-    async ({ params, set }) => {
+    async ({ params, body, set }) => {
       await createRepo(params.name);
+      if (body) setRepoConfig(params.name, body.install);
       set.status = 204;
     },
-    { params: t.Object({ name: t.String({ pattern: REPO_PATTERN }) }) },
+    {
+      params: t.Object({ name: t.String({ pattern: REPO_PATTERN }) }),
+      body: t.Optional(t.Object({ install: t.Optional(t.String({ minLength: 1, maxLength: 1000 })) })),
+    },
   )
   .delete(
     "/repos/:name",
     async ({ params, set }) => {
       await deployments.removeRepo(params.name);
+      forgetRepo(params.name);
       set.status = 204;
     },
     { params: t.Object({ name: t.String({ pattern: REPO_PATTERN }) }) },

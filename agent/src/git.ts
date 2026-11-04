@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { config } from "./config";
 import { run, runOrThrow } from "./utils/exec";
@@ -11,11 +11,26 @@ export const repoPath = (repo: string) => join(config.paths.repos, `${repo}.git`
 export const releaseDir = (id: string, release: string) =>
   join(config.paths.deployments, id, release);
 
+// Runs as `git` during the push: no secret, no network, only a file in the queue.
+const HOOK = `#!/bin/sh
+name=$(basename "$(pwd)" .git)
+tmp="${config.paths.queue}/.$name.$$"
+cat > "$tmp" && mv "$tmp" "${config.paths.queue}/$name.$$.push"
+exit 0
+`;
+
+export function installHook(repo: string): void {
+  const hook = join(repoPath(repo), "hooks", "post-receive");
+  writeFileSync(hook, HOOK);
+  chmodSync(hook, 0o755);
+}
+
 export async function createRepo(repo: string): Promise<void> {
   const path = repoPath(repo);
   if (existsSync(path)) return;
   await runOrThrow(["git", "init", "--bare", "--quiet", path]);
   await runOrThrow(["chown", "-R", "git:git", path]);
+  installHook(repo);
 }
 
 export function deleteRepo(repo: string): void {
