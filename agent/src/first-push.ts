@@ -34,12 +34,6 @@ export function setRepoConfig(repo: string, install: string | undefined): void {
   saveState();
 }
 
-export function forgetRepo(repo: string): void {
-  const { [repo]: _, ...rest } = state;
-  state = rest;
-  saveState();
-}
-
 const SHA = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const BRANCH = /^refs\/heads\/[A-Za-z0-9._/-]{1,200}$/;
 

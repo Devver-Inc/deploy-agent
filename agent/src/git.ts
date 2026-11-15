@@ -33,10 +33,6 @@ export async function createRepo(repo: string): Promise<void> {
   installHook(repo);
 }
 
-export function deleteRepo(repo: string): void {
-  rmSync(repoPath(repo), { recursive: true, force: true });
-}
-
 export async function resolveCommit(repo: string, ref: string): Promise<string> {
   if (!existsSync(repoPath(repo))) {
     throw new AgentError(404, "REPO_NOT_FOUND", `Repo '${repo}' does not exist.`);

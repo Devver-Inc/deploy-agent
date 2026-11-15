@@ -5,7 +5,7 @@ import { dirname, join } from "path";
 import type { Deployment, DeploymentStatus, Phase, ServiceSpec } from "./contract";
 import { config } from "./config";
 import { AgentError, toApiError } from "./errors";
-import { addRelease, createRepo, deleteRepo, releaseDir, removeRelease, resolveCommit } from "./git";
+import { addRelease, createRepo, releaseDir, removeRelease, resolveCommit } from "./git";
 import { syncRoutes } from "./nginx";
 import * as npmStore from "./npm-store";
 import * as pm2 from "./pm2";
@@ -385,11 +385,6 @@ export function find(id: string): Release {
   const release = store.get(id);
   if (!release) throw new AgentError(404, "DEPLOYMENT_NOT_FOUND", `Deployment '${id}' does not exist.`);
   return release;
-}
-
-export async function removeRepo(repo: string): Promise<void> {
-  for (const r of store.all().filter((r) => r.repo === repo)) await remove(r.id);
-  deleteRepo(repo);
 }
 
 export async function reconcile(): Promise<void> {
