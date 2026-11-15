@@ -75,29 +75,6 @@ export function findApps(files: string[]): string[] {
   return roots.size ? [...roots].sort().slice(0, MAX_APPS) : ["."];
 }
 
-interface AppReport {
-  root: string;
-  status: "running" | "done" | "failed";
-  durationMs?: number;
-  runtime?: string | null;
-  error?: ReturnType<typeof toApiError>;
-}
-
-async function report(repo: string, body: object): Promise<void> {
-  const { backendUrl, projectId, secret } = config;
-  if (!backendUrl || !projectId || !secret) return;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const response = await fetch(`${backendUrl}/internal/projects/${projectId}/repos/${repo}/prepare`, {
-      method: "POST",
-      headers: { "x-devver-secret": secret, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }).catch(() => undefined);
-    if (response?.ok) return;
-    await Bun.sleep(2000 * attempt);
-  }
-  console.error(`prepare report for ${repo} could not reach the backend`);
-}
-
 async function prepareFirstPush(repo: string, commit: string): Promise<void> {
   if (state[repo]?.prepared || !existsSync(repoPath(repo))) return;
   // Set first: a failed install must not run again on the next push.
@@ -107,22 +84,11 @@ async function prepareFirstPush(repo: string, commit: string): Promise<void> {
   const tree = await run(["git", "-C", repoPath(repo), "ls-tree", "-r", "--name-only", commit]);
   const roots = findApps(tree.ok ? tree.stdout.split("\n").filter(Boolean) : []);
   const install = roots.length === 1 ? state[repo]?.install : undefined;
-  const startedAt = new Date().toISOString();
-  const apps: AppReport[] = roots.map((root) => ({ root, status: "running" }));
-  await report(repo, { status: "running", commit, startedAt, apps });
-
-  for (const app of apps) {
-    const started = Date.now();
-    try {
-      const result = await prepare(repo, commit, { root: app.root, install });
-      Object.assign(app, { status: "done", runtime: result.runtime });
-    } catch (error) {
-      Object.assign(app, { status: "failed", error: toApiError(error) });
-    }
-    app.durationMs = Date.now() - started;
+  for (const root of roots) {
+    await prepare(repo, commit, { root, install }).catch((error) =>
+      console.error(`first-push install of ${repo}/${root} failed: ${toApiError(error).message}`),
+    );
   }
-  const failed = apps.some((a) => a.status === "failed");
-  await report(repo, { status: failed ? "failed" : "done", commit, startedAt, finishedAt: new Date().toISOString(), apps });
 }
 
 const queueLock = new AsyncMutex();
