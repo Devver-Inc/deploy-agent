@@ -3,10 +3,10 @@ import { Deployment, ID_PATTERN, REPO_PATTERN } from "./contract";
 import { config } from "./config";
 import * as deployments from "./deploy";
 import { toApiError } from "./errors";
-import { setRepoConfig } from "./first-push";
 import { createRepo, resolveCommit } from "./git";
 import { listMongoDatabases } from "./mongo";
 import * as pm2 from "./pm2";
+import { repoState } from "./repo-state";
 import { store } from "./store";
 
 const idParams = t.Object({ id: t.String({ pattern: ID_PATTERN }) });
@@ -44,7 +44,6 @@ export const routes = new Elysia()
   .put(
     "/deployments/:id",
     async ({ params, body }) => {
-      await createRepo(body.repo);
       await resolveCommit(body.repo, body.ref);
       return phaseStream(`deploy ${params.id}`, (emit) => deployments.deploy(params.id, body, emit));
     },
@@ -84,7 +83,7 @@ export const routes = new Elysia()
     "/repos/:name",
     async ({ params, body, set }) => {
       await createRepo(params.name);
-      if (body) setRepoConfig(params.name, body.install);
+      if (body) repoState.setInstall(params.name, body.install);
       set.status = 204;
     },
     {

@@ -1,38 +1,12 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
-import { dirname, join, posix } from "path";
+import { existsSync, readdirSync, readFileSync, rmSync } from "fs";
+import { join, posix } from "path";
 import { REPO_PATTERN } from "./contract";
 import { config } from "./config";
 import { prepare } from "./deploy";
 import { toApiError } from "./errors";
 import { installHook, repoPath } from "./git";
+import { repoState } from "./repo-state";
 import { run } from "./utils/exec";
-
-interface RepoState {
-  install?: string;
-  prepared?: boolean;
-}
-
-function loadState(): Record<string, RepoState> {
-  try {
-    return JSON.parse(readFileSync(config.paths.repoState, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-let state = loadState();
-
-function saveState(): void {
-  mkdirSync(dirname(config.paths.repoState), { recursive: true });
-  const tmp = `${config.paths.repoState}.tmp`;
-  writeFileSync(tmp, JSON.stringify(state, null, 2), { mode: 0o600 });
-  renameSync(tmp, config.paths.repoState);
-}
-
-export function setRepoConfig(repo: string, install: string | undefined): void {
-  state = { ...state, [repo]: { ...state[repo], install } };
-  saveState();
-}
 
 const SHA = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const BRANCH = /^refs\/heads\/[A-Za-z0-9._/-]{1,200}$/;
@@ -69,14 +43,13 @@ export function findApps(files: string[]): string[] {
 }
 
 async function prepareFirstPush(repo: string, commit: string): Promise<void> {
-  if (state[repo]?.prepared || !existsSync(repoPath(repo))) return;
+  if (repoState.prepared(repo) || !existsSync(repoPath(repo))) return;
   // Set first: a failed install must not run again on the next push.
-  state = { ...state, [repo]: { ...state[repo], prepared: true } };
-  saveState();
+  repoState.markPrepared(repo);
 
   const tree = await run(["git", "-C", repoPath(repo), "ls-tree", "-r", "--name-only", commit]);
   const roots = findApps(tree.ok ? tree.stdout.split("\n").filter(Boolean) : []);
-  const install = roots.length === 1 ? state[repo]?.install : undefined;
+  const install = roots.length === 1 ? repoState.install(repo) : undefined;
   for (const root of roots) {
     await prepare(repo, commit, { root, install }).catch((error) =>
       console.error(`first-push install of ${repo}/${root} failed: ${toApiError(error).message}`),

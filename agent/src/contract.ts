@@ -1,7 +1,8 @@
 import { t, type Static } from "elysia";
 
 export const ID_PATTERN = "^[a-z0-9][a-z0-9-]{0,62}$";
-export const REPO_PATTERN = "^[a-z0-9][a-z0-9-]{0,62}$";
+// Repos are named after a root commit: 40 (SHA-1) or 64 (SHA-256) hex characters.
+export const REPO_PATTERN = "^[a-z0-9][a-z0-9-]{0,63}$";
 export const HOST_PATTERN =
   "^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$";
 // Branch or commit; no leading "-" so it can never be read as an option.

@@ -1,15 +1,16 @@
 import { createHash } from "crypto";
 import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createServer, type AddressInfo } from "net";
-import { dirname, join } from "path";
+import { dirname, join, resolve } from "path";
 import type { Deployment, DeploymentStatus, Phase, ServiceSpec } from "./contract";
 import { config } from "./config";
 import { AgentError, toApiError } from "./errors";
-import { addRelease, createRepo, releaseDir, removeRelease, resolveCommit } from "./git";
+import { addRelease, releaseDir, removeRelease, resolveCommit } from "./git";
 import { syncRoutes } from "./nginx";
 import * as npmStore from "./npm-store";
 import * as pm2 from "./pm2";
 import { resolveRuntime } from "./runtime";
+import { repoState } from "./repo-state";
 import { store, type Release } from "./store";
 import { KeyedAsyncMutex } from "./utils/async-mutex";
 import { run, runUserCommand } from "./utils/exec";
@@ -269,7 +270,6 @@ export function deploy(id: string, spec: Deployment, emit: Emit = () => {}) {
 }
 
 async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<DeploymentStatus> {
-  await createRepo(spec.repo);
   const commit = await resolveCommit(spec.repo, spec.ref);
   const current = store.get(id);
   if (current && sameDeployment(current, spec, commit)) {
@@ -292,7 +292,8 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
     const service = { ...spec.service };
     const dev = !!runtime?.devCommand && !service.build && !service.start;
     if (dev) service.start = runtime!.devCommand;
-    service.install ??= runtime?.installCommand;
+    // The install given at `devver init` describes the repo root, not a monorepo app.
+    service.install ??= (servicePath === resolve(dir) ? repoState.install(spec.repo) : undefined) ?? runtime?.installCommand;
     service.start ??= runtime?.startCommand;
     if (!service.start) {
       throw new AgentError(
