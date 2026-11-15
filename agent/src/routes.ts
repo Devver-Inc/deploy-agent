@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { Deployment, ID_PATTERN, REF_PATTERN, REPO_PATTERN } from "./contract";
+import { Deployment, ID_PATTERN, REPO_PATTERN } from "./contract";
 import { config } from "./config";
 import * as deployments from "./deploy";
 import { toApiError } from "./errors";
@@ -49,22 +49,6 @@ export const routes = new Elysia()
       return phaseStream(`deploy ${params.id}`, (emit) => deployments.deploy(params.id, body, emit));
     },
     { params: idParams, body: Deployment },
-  )
-  .post(
-    "/repos/:name/prepare",
-    async ({ params, body }) => {
-      await resolveCommit(params.name, body.ref);
-      return phaseStream(`prepare ${params.name}`, (emit) =>
-        deployments.prepare(params.name, body.ref, body.service, emit),
-      );
-    },
-    {
-      params: t.Object({ name: t.String({ pattern: REPO_PATTERN }) }),
-      body: t.Object({
-        ref: t.String({ pattern: REF_PATTERN }),
-        service: t.Object({ root: t.Optional(t.String()), install: t.Optional(t.String()) }),
-      }),
-    },
   )
   .get("/deployments", () => deployments.list())
   .delete(

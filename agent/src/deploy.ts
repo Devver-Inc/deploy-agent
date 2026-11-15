@@ -244,38 +244,20 @@ async function waitHealthy(name: string, port: number, timeoutMs = 60_000): Prom
 // Never matches ID_PATTERN, so it cannot collide with a deployment.
 const PREPARE_ID = "_prepare";
 
-export interface Prepared {
-  commit: string;
-  lockHash: string;
-  runtime: string | null;
-  install?: string;
-  start?: string;
-  dev?: string;
-}
-
-export async function prepare(repo: string, ref: string, spec: Pick<ServiceSpec, "root" | "install">, emit: Emit = () => {}): Promise<Prepared> {
-  let clock = Date.now();
-  const phase = (p: Phase) => {
-    emit(p, Date.now() - clock);
-    clock = Date.now();
-  };
-  const commit = await resolveCommit(repo, ref);
+export async function prepare(repo: string, commit: string, spec: Pick<ServiceSpec, "root" | "install">): Promise<void> {
   const release = `${repo}.${Date.now().toString(36)}`;
   const dir = await addRelease(repo, PREPARE_ID, release, commit);
   let pinned: string | undefined;
   try {
     const servicePath = serviceDir(dir, spec.root);
     const runtime = resolveRuntime(servicePath);
-    const install = spec.install ?? runtime?.installCommand;
-    phase("checkout");
-
     const hash = lockHash(servicePath, spec.root);
     pinned = hash;
     inFlight.push(hash);
-    await installDependencies(servicePath, hash, runtime, install, runtime?.environment(servicePath, "install") ?? {});
+    await installDependencies(
+      servicePath, hash, runtime, spec.install ?? runtime?.installCommand, runtime?.environment(servicePath, "install") ?? {},
+    );
     prepared.set(hash, Date.now() + PREPARED_TTL_MS);
-    phase("install");
-    return { commit, lockHash: hash, runtime: runtime?.id ?? null, install, start: runtime?.startCommand, dev: runtime?.devCommand };
   } finally {
     if (pinned) inFlight.splice(inFlight.indexOf(pinned), 1);
     await removeRelease(repo, PREPARE_ID, release);

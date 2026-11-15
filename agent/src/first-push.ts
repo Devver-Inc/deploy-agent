@@ -1,11 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, posix } from "path";
 import { REPO_PATTERN } from "./contract";
 import { config } from "./config";
 import { prepare } from "./deploy";
 import { toApiError } from "./errors";
 import { installHook, repoPath } from "./git";
-import { AsyncMutex } from "./utils/async-mutex";
 import { run } from "./utils/exec";
 
 interface RepoState {
@@ -91,29 +90,31 @@ async function prepareFirstPush(repo: string, commit: string): Promise<void> {
   }
 }
 
-const queueLock = new AsyncMutex();
+let draining = false;
 
-function drain(): Promise<void> {
-  return queueLock.run(async () => {
+async function drain(): Promise<void> {
+  if (draining) return;
+  draining = true;
+  try {
     for (const file of readdirSync(config.paths.queue)) {
       if (!file.endsWith(".push")) continue;
       const path = join(config.paths.queue, file);
       const content = readFileSync(path, "utf8").slice(0, 65_536);
       rmSync(path, { force: true });
       const push = parsePush(file, content);
-      if (push) {
-        await prepareFirstPush(push.repo, push.commit).catch((error) =>
-          console.error(`first-push install of ${push.repo} failed: ${toApiError(error).message}`),
-        );
-      }
+      if (push) await prepareFirstPush(push.repo, push.commit);
     }
-  });
+  } catch (error) {
+    console.error(`push queue: ${toApiError(error).message}`);
+  } finally {
+    draining = false;
+  }
 }
 
 export function watchPushes(): void {
   for (const name of existsSync(config.paths.repos) ? readdirSync(config.paths.repos) : []) {
     if (name.endsWith(".git")) installHook(name.slice(0, -4));
   }
-  watch(config.paths.queue, () => void drain());
-  void drain();
+  // Polled: fs.watch misses the hook's rename now and then.
+  setInterval(() => void drain(), 1000);
 }
