@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "path";
 import type { Deployment, DeploymentStatus, Phase, ServiceSpec } from "./contract";
 import { config } from "./config";
 import { AgentError, toApiError } from "./errors";
-import { addRelease, releaseDir, removeRelease, resolveCommit } from "./git";
+import { addRelease, pinCommit, releaseDir, removeRelease, resolveCommit, unpinCommit } from "./git";
 import { syncRoutes } from "./nginx";
 import * as npmStore from "./npm-store";
 import * as pm2 from "./pm2";
@@ -339,6 +339,7 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
       id, repo: spec.repo, ref: spec.ref, commit, host: spec.host, service: spec.service,
       release, port, lockHash: hash, envHash: envHash(spec.env), startedAt: new Date().toISOString(),
     });
+    await pinCommit(spec.repo, id, commit);
     try {
       await syncRoutes({ host: spec.host, port });
     } catch (error) {
@@ -372,6 +373,7 @@ export function remove(id: string): Promise<void> {
     await syncRoutes();
     await pm2.remove(current.release);
     await removeRelease(current.repo, id, current.release);
+    await unpinCommit(current.repo, id);
     rmSync(join(config.paths.deployments, id), { recursive: true, force: true });
     pruneUnused();
   });

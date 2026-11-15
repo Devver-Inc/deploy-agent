@@ -60,3 +60,50 @@ export async function removeRelease(repo: string, id: string, release: string) {
     await run(["git", "-C", repoPath(repo), "worktree", "prune"]);
   }
 }
+
+// Writes into the bare repo run as its owner, so later pushes can still rewrite it.
+const asOwner = (repo: string, args: string[]) => run(["git", "-C", repoPath(repo), ...args], { user: "git" });
+
+/** Keeps a deployed commit from being garbage-collected after its branch moves on. */
+export async function pinCommit(repo: string, id: string, commit: string): Promise<void> {
+  await asOwner(repo, ["update-ref", `refs/devver/deployments/${id}`, commit]);
+}
+
+export async function unpinCommit(repo: string, id: string): Promise<void> {
+  if (existsSync(repoPath(repo))) await asOwner(repo, ["update-ref", "-d", `refs/devver/deployments/${id}`]);
+}
+
+/** The nearest deployed commit on `commit`'s first-parent history, excluding `commit` itself. */
+export function nearestDeployed(history: string[], deployed: Map<string, string>): string | null {
+  for (const ancestor of history.slice(1)) {
+    const id = deployed.get(ancestor);
+    if (id) return id;
+  }
+  return null;
+}
+
+export async function firstParentHistory(repo: string, commit: string): Promise<string[]> {
+  await resolveCommit(repo, commit);
+  const result = await run(["git", "-C", repoPath(repo), "rev-list", "--first-parent", commit]);
+  if (!result.ok) throw new AgentError(422, "GIT_FAILED", "Could not read the commit history.");
+  return result.stdout.split("\n").filter(Boolean);
+}
+
+export async function mergeCommits(repo: string, first: string, second: string): Promise<string> {
+  await resolveCommit(repo, first);
+  await resolveCommit(repo, second);
+  if (!(await asOwner(repo, ["merge-base", first, second])).ok) {
+    throw new AgentError(409, "UNRELATED_HISTORIES", "The two revisions share no history.");
+  }
+  const tree = await asOwner(repo, ["merge-tree", "--write-tree", "--name-only", first, second]);
+  if (!tree.ok) {
+    const conflicts = tree.stdout.split("\n\n")[0]!.split("\n").slice(1).join("\n");
+    throw new AgentError(409, "MERGE_CONFLICT", "Merge conflicts prevent combining these revisions.", conflicts);
+  }
+  const commit = await asOwner(repo, [
+    "-c", "user.name=Devver", "-c", "user.email=devver@localhost",
+    "commit-tree", tree.stdout.trim(), "-p", first, "-p", second, "-m", "Merge Devver deployments",
+  ]);
+  if (!commit.ok) throw new AgentError(422, "GIT_FAILED", "Git could not write the merge commit.", commit.stderr);
+  return commit.stdout.trim();
+}

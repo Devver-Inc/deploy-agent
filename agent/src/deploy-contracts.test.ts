@@ -6,6 +6,7 @@ import { HOST_PATTERN, ID_PATTERN, REF_PATTERN } from "./contract";
 import { envHash, lockHash, pruneShared } from "./deploy";
 import { routesMap, widgetConf } from "./nginx";
 import { findApps, parsePush } from "./first-push";
+import { nearestDeployed } from "./git";
 import { lockEntries, pruneStore, seedScript } from "./npm-store";
 import { wrapperScript } from "./pm2";
 import { run, userEnv } from "./utils/exec";
@@ -171,4 +172,12 @@ test("apps: a root lockfile is one install, otherwise each manifest folder", () 
   expect(findApps(["apps/web/node_modules/x/package.json", "apps/web/package.json"])).toEqual(["apps/web"]);
   expect(findApps(["a/b/c/d/package.json"])).toEqual(["."]);
   expect(findApps(["README.md"])).toEqual(["."]);
+});
+
+test("the parent is the nearest deployed first-parent ancestor, never the commit itself", () => {
+  const deployed = new Map([["a", "dep-a"], ["c", "dep-c"]]);
+  expect(nearestDeployed(["d", "c", "b", "a"], deployed)).toBe("dep-c");
+  expect(nearestDeployed(["c", "b", "a"], deployed)).toBe("dep-a");
+  expect(nearestDeployed(["a"], deployed)).toBeNull();
+  expect(nearestDeployed(["x", "y"], deployed)).toBeNull();
 });

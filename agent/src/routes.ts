@@ -3,13 +3,15 @@ import { Deployment, ID_PATTERN, REPO_PATTERN } from "./contract";
 import { config } from "./config";
 import * as deployments from "./deploy";
 import { toApiError } from "./errors";
-import { createRepo, resolveCommit } from "./git";
+import { createRepo, firstParentHistory, mergeCommits, nearestDeployed, resolveCommit } from "./git";
 import { listMongoDatabases } from "./mongo";
 import * as pm2 from "./pm2";
 import { repoState } from "./repo-state";
 import { store } from "./store";
 
 const idParams = t.Object({ id: t.String({ pattern: ID_PATTERN }) });
+const repoParams = t.Object({ name: t.String({ pattern: REPO_PATTERN }) });
+const COMMIT_PATTERN = "^([0-9a-f]{40}|[0-9a-f]{64})$";
 const encoder = new TextEncoder();
 const sse = (event: string, data: unknown) =>
   encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -89,6 +91,32 @@ export const routes = new Elysia()
     {
       params: t.Object({ name: t.String({ pattern: REPO_PATTERN }) }),
       body: t.Optional(t.Object({ install: t.Optional(t.String({ minLength: 1, maxLength: 1000 })) })),
+    },
+  )
+  .post(
+    "/repos/:name/parent",
+    async ({ params, body }) => {
+      const history = await firstParentHistory(params.name, body.commit);
+      const deployed = new Map(body.candidates.map((c) => [c.commit, c.deploymentId]));
+      return { parentDeploymentId: nearestDeployed(history, deployed) };
+    },
+    {
+      params: repoParams,
+      body: t.Object({
+        commit: t.String({ pattern: COMMIT_PATTERN }),
+        candidates: t.Array(
+          t.Object({ deploymentId: t.String({ pattern: ID_PATTERN }), commit: t.String({ pattern: COMMIT_PATTERN }) }),
+          { maxItems: 10_000 },
+        ),
+      }),
+    },
+  )
+  .post(
+    "/repos/:name/merge",
+    async ({ params, body }) => ({ commit: await mergeCommits(params.name, body.first, body.second) }),
+    {
+      params: repoParams,
+      body: t.Object({ first: t.String({ pattern: COMMIT_PATTERN }), second: t.String({ pattern: COMMIT_PATTERN }) }),
     },
   )
   .get("/databases/mongo", () => listMongoDatabases());
