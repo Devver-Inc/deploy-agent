@@ -109,7 +109,8 @@ RUN chown -R git:git /app/repos \
     && chown -R root:root /app/agent /app/data /app/nginx
 
 # root runs git only against the bare repos (never inside a release directory).
-RUN git config --global --add safe.directory '/app/repos/*'
+# --system: the client chart mounts a volume over /root, hiding ~/.gitconfig.
+RUN git config --system --add safe.directory '/app/repos/*'
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY sshd_config /etc/ssh/sshd_config
