@@ -9,6 +9,8 @@ export interface Release {
   ref: string;
   commit: string;
   host: string;
+  /** Stable hosts (a branch URL) also served by this deployment; one deployment holds each. */
+  aliases?: string[];
   service: ServiceSpec;
   release: string;
   port: number;
@@ -17,38 +19,40 @@ export interface Release {
   startedAt: string;
 }
 
-function load<T>(path: string): Record<string, T> {
-  if (!existsSync(path)) return {};
-  return JSON.parse(readFileSync(path, "utf8"));
+function load(): Record<string, Release> {
+  if (!existsSync(config.paths.store)) return {};
+  return JSON.parse(readFileSync(config.paths.store, "utf8"));
 }
 
-function save(path: string, data: unknown): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
-  renameSync(tmp, path);
+let releases = load();
+
+function save(): void {
+  mkdirSync(dirname(config.paths.store), { recursive: true });
+  const tmp = `${config.paths.store}.tmp`;
+  writeFileSync(tmp, JSON.stringify(releases, null, 2), { mode: 0o600 });
+  renameSync(tmp, config.paths.store);
 }
 
-let releases = load<Release>(config.paths.store);
-/** Stable hosts (a branch's latest deployment of a service) → deployment id; the backend owns the table. */
-let aliases = load<string>(config.paths.aliases);
+/** The release keeps its aliases; any other deployment holding one of them gives it up. */
+export function withRelease(all: Record<string, Release>, release: Release): Record<string, Release> {
+  const taken = new Set(release.aliases ?? []);
+  const others = Object.values(all)
+    .filter((r) => r.id !== release.id)
+    .map((r) => (r.aliases?.some((a) => taken.has(a)) ? { ...r, aliases: r.aliases.filter((a) => !taken.has(a)) } : r));
+  return Object.fromEntries([...others, release].map((r) => [r.id, r]));
+}
 
 export const store = {
   get: (id: string): Release | undefined => releases[id],
   all: (): Release[] => Object.values(releases),
-  byHost: (host: string) => releases[aliases[host] ?? ""] ?? Object.values(releases).find((r) => r.host === host),
+  byHost: (host: string) => Object.values(releases).find((r) => r.host === host || r.aliases?.includes(host)),
   set(release: Release): void {
-    releases = { ...releases, [release.id]: release };
-    save(config.paths.store, releases);
+    releases = withRelease(releases, release);
+    save();
   },
   delete(id: string): void {
     const { [id]: _, ...rest } = releases;
     releases = rest;
-    save(config.paths.store, releases);
-  },
-  aliases: (): Record<string, string> => aliases,
-  setAliases(table: Record<string, string>): void {
-    aliases = table;
-    save(config.paths.aliases, aliases);
+    save();
   },
 };

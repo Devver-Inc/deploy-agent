@@ -19,6 +19,8 @@ export const Deployment = t.Object({
   repo: t.String({ pattern: REPO_PATTERN }),
   ref: t.String({ pattern: REF_PATTERN }),
   host: t.String({ pattern: HOST_PATTERN }),
+  // Branch URLs: taken from any other deployment once this one serves.
+  aliases: t.Optional(t.Array(t.String({ pattern: HOST_PATTERN }), { maxItems: 10 })),
   service: ServiceSpec,
   env: t.Optional(t.Record(t.String(), t.String())),
 });
