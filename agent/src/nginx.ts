@@ -18,9 +18,28 @@ export function routesMap(routes: { host: string; port: number }[]): string {
   return routes.map(({ host, port }) => `${host} 127.0.0.1:${port};\n`).join("");
 }
 
+/** Each deployment's host, plus each alias on its deployment's port; an alias to a missing deployment is skipped. */
+export function routeList(
+  releases: { id: string; host: string; port: number }[],
+  aliases: Record<string, string>,
+): { host: string; port: number }[] {
+  const byId = new Map(releases.map((r) => [r.id, r]));
+  const aliased = Object.entries(aliases).flatMap(([host, id]) => {
+    const release = byId.get(id);
+    return release ? [{ host, port: release.port }] : [];
+  });
+  return [...releases, ...aliased];
+}
+
+/** Replaces the whole table, so replaying it changes nothing. */
+export async function setAliases(table: { host: string; deploymentId: string }[]): Promise<void> {
+  store.setAliases(Object.fromEntries(table.map((a) => [a.host, a.deploymentId])));
+  await syncRoutes();
+}
+
 export function syncRoutes(expect?: { host: string; port: number }): Promise<void> {
   return mutex.run(async () => {
-    writeFileSync(config.paths.routes, routesMap(store.all()));
+    writeFileSync(config.paths.routes, routesMap(routeList(store.all(), store.aliases())));
     await runOrThrow(["nginx", "-s", "reload"]);
     if (!expect) return;
     // `nginx -s reload` returns before the new workers serve the new map.

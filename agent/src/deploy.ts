@@ -6,7 +6,7 @@ import type { Deployment, DeploymentStatus, Phase, ServiceSpec } from "./contrac
 import { config } from "./config";
 import { AgentError, toApiError } from "./errors";
 import { addRelease, pinCommit, releaseDir, removeRelease, resolveCommit, unpinCommit } from "./git";
-import { syncRoutes } from "./nginx";
+import { setAliases, syncRoutes } from "./nginx";
 import * as npmStore from "./npm-store";
 import * as pm2 from "./pm2";
 import { resolveRuntime } from "./runtime";
@@ -410,4 +410,10 @@ export async function reconcile(): Promise<void> {
       console.error(`reconcile of ${id} failed: ${toApiError(error).message}`),
     );
   }
+
+  const aliases = await fetch(`${backendUrl}/internal/projects/${projectId}/aliases`, {
+    headers: { "x-devver-secret": secret },
+  }).catch(() => undefined);
+  if (aliases?.ok) await setAliases((await aliases.json()) as { host: string; deploymentId: string }[]);
+  else console.error("reconcile: aliases unavailable, keeping local table");
 }

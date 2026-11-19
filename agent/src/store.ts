@@ -17,31 +17,38 @@ export interface Release {
   startedAt: string;
 }
 
-function load(): Record<string, Release> {
-  if (!existsSync(config.paths.store)) return {};
-  return JSON.parse(readFileSync(config.paths.store, "utf8"));
+function load<T>(path: string): Record<string, T> {
+  if (!existsSync(path)) return {};
+  return JSON.parse(readFileSync(path, "utf8"));
 }
 
-let releases = load();
-
-function save(): void {
-  mkdirSync(dirname(config.paths.store), { recursive: true });
-  const tmp = `${config.paths.store}.tmp`;
-  writeFileSync(tmp, JSON.stringify(releases, null, 2), { mode: 0o600 });
-  renameSync(tmp, config.paths.store);
+function save(path: string, data: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
+  renameSync(tmp, path);
 }
+
+let releases = load<Release>(config.paths.store);
+/** Stable hosts (a branch's latest deployment of a service) → deployment id; the backend owns the table. */
+let aliases = load<string>(config.paths.aliases);
 
 export const store = {
   get: (id: string): Release | undefined => releases[id],
   all: (): Release[] => Object.values(releases),
-  byHost: (host: string) => Object.values(releases).find((r) => r.host === host),
+  byHost: (host: string) => releases[aliases[host] ?? ""] ?? Object.values(releases).find((r) => r.host === host),
   set(release: Release): void {
     releases = { ...releases, [release.id]: release };
-    save();
+    save(config.paths.store, releases);
   },
   delete(id: string): void {
     const { [id]: _, ...rest } = releases;
     releases = rest;
-    save();
+    save(config.paths.store, releases);
+  },
+  aliases: (): Record<string, string> => aliases,
+  setAliases(table: Record<string, string>): void {
+    aliases = table;
+    save(config.paths.aliases, aliases);
   },
 };

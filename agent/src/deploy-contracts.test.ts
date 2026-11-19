@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { HOST_PATTERN, ID_PATTERN, REF_PATTERN } from "./contract";
 import { envHash, lockHash, pruneShared } from "./deploy";
-import { routesMap, widgetConf } from "./nginx";
+import { routeList, routesMap, widgetConf } from "./nginx";
 import { findApps, parsePush } from "./first-push";
 import { nearestDeployed } from "./git";
 import { lockEntries, pruneStore, seedScript } from "./npm-store";
@@ -180,4 +180,11 @@ test("the parent is the nearest deployed first-parent ancestor, never the commit
   expect(nearestDeployed(["c", "b", "a"], deployed)).toBe("dep-a");
   expect(nearestDeployed(["a"], deployed)).toBeNull();
   expect(nearestDeployed(["x", "y"], deployed)).toBeNull();
+});
+
+test("an alias routes to its deployment's port, and is dropped when the deployment is gone", () => {
+  const releases = [{ id: "d1", host: "d1--p.preview.x", port: 4001 }];
+  expect(routesMap(routeList(releases, { "main--api--p.preview.x": "d1", "old--api--p.preview.x": "gone" }))).toBe(
+    "d1--p.preview.x 127.0.0.1:4001;\nmain--api--p.preview.x 127.0.0.1:4001;\n",
+  );
 });
