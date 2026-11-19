@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
-import { Deployment, ID_PATTERN, REPO_PATTERN } from "./contract";
+import { Deployment, HOST_PATTERN, ID_PATTERN, REPO_PATTERN } from "./contract";
+import { setAliases } from "./nginx";
 import { config } from "./config";
 import * as deployments from "./deploy";
 import { toApiError } from "./errors";
@@ -117,6 +118,19 @@ export const routes = new Elysia()
     {
       params: repoParams,
       body: t.Object({ first: t.String({ pattern: COMMIT_PATTERN }), second: t.String({ pattern: COMMIT_PATTERN }) }),
+    },
+  )
+  .put(
+    "/aliases",
+    async ({ body, set }) => {
+      await setAliases(body);
+      set.status = 204;
+    },
+    {
+      body: t.Array(
+        t.Object({ host: t.String({ pattern: HOST_PATTERN }), deploymentId: t.String({ pattern: ID_PATTERN }) }),
+        { maxItems: 1000 },
+      ),
     },
   )
   .get("/databases/mongo", () => listMongoDatabases());
