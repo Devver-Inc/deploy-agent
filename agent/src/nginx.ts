@@ -18,28 +18,16 @@ export function routesMap(routes: { host: string; port: number }[]): string {
   return routes.map(({ host, port }) => `${host} 127.0.0.1:${port};\n`).join("");
 }
 
-/** Each deployment's host, plus each alias on its deployment's port; an alias to a missing deployment is skipped. */
-export function routeList(
-  releases: { id: string; host: string; port: number }[],
-  aliases: Record<string, string>,
-): { host: string; port: number }[] {
-  const byId = new Map(releases.map((r) => [r.id, r]));
-  const aliased = Object.entries(aliases).flatMap(([host, id]) => {
-    const release = byId.get(id);
-    return release ? [{ host, port: release.port }] : [];
-  });
-  return [...releases, ...aliased];
-}
-
-/** Replaces the whole table, so replaying it changes nothing. */
-export async function setAliases(table: { host: string; deploymentId: string }[]): Promise<void> {
-  store.setAliases(Object.fromEntries(table.map((a) => [a.host, a.deploymentId])));
-  await syncRoutes();
+/** Each deployment's host and aliases, on its port; nginx refuses a host listed twice, so the last one wins. */
+export function routeList(releases: { host: string; aliases?: string[]; port: number }[]): { host: string; port: number }[] {
+  const routes = new Map<string, number>();
+  for (const r of releases) for (const host of [r.host, ...(r.aliases ?? [])]) routes.set(host, r.port);
+  return [...routes].map(([host, port]) => ({ host, port }));
 }
 
 export function syncRoutes(expect?: { host: string; port: number }): Promise<void> {
   return mutex.run(async () => {
-    writeFileSync(config.paths.routes, routesMap(routeList(store.all(), store.aliases())));
+    writeFileSync(config.paths.routes, routesMap(routeList(store.all())));
     await runOrThrow(["nginx", "-s", "reload"]);
     if (!expect) return;
     // `nginx -s reload` returns before the new workers serve the new map.

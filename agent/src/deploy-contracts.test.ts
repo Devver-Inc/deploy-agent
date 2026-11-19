@@ -8,6 +8,7 @@ import { routeList, routesMap, widgetConf } from "./nginx";
 import { findApps, parsePush } from "./first-push";
 import { nearestDeployed } from "./git";
 import { lockEntries, pruneStore, seedScript } from "./npm-store";
+import { withRelease } from "./store";
 import { wrapperScript } from "./pm2";
 import { run, userEnv } from "./utils/exec";
 import { resolvePathWithin } from "./utils/validation";
@@ -182,9 +183,12 @@ test("the parent is the nearest deployed first-parent ancestor, never the commit
   expect(nearestDeployed(["x", "y"], deployed)).toBeNull();
 });
 
-test("an alias routes to its deployment's port, and is dropped when the deployment is gone", () => {
-  const releases = [{ id: "d1", host: "d1--p.preview.x", port: 4001 }];
-  expect(routesMap(routeList(releases, { "main--api--p.preview.x": "d1", "old--api--p.preview.x": "gone" }))).toBe(
-    "d1--p.preview.x 127.0.0.1:4001;\nmain--api--p.preview.x 127.0.0.1:4001;\n",
+test("a branch URL is served by the deployment that last took it, and only by it", () => {
+  const base = { repo: "r", ref: "x", commit: "c", service: {}, release: "x", startedAt: "" };
+  let all = withRelease({}, { ...base, id: "d1", host: "d1--p.preview.x", aliases: ["main--api--p.preview.x"], port: 4001 });
+  all = withRelease(all, { ...base, id: "d2", host: "d2--p.preview.x", aliases: ["main--api--p.preview.x"], port: 4002 });
+  expect(all.d1!.aliases).toEqual([]);
+  expect(routesMap(routeList(Object.values(all)))).toBe(
+    "d1--p.preview.x 127.0.0.1:4001;\nd2--p.preview.x 127.0.0.1:4002;\nmain--api--p.preview.x 127.0.0.1:4002;\n",
   );
 });

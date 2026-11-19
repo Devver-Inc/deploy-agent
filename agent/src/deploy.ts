@@ -6,7 +6,7 @@ import type { Deployment, DeploymentStatus, Phase, ServiceSpec } from "./contrac
 import { config } from "./config";
 import { AgentError, toApiError } from "./errors";
 import { addRelease, pinCommit, releaseDir, removeRelease, resolveCommit, unpinCommit } from "./git";
-import { setAliases, syncRoutes } from "./nginx";
+import { syncRoutes } from "./nginx";
 import * as npmStore from "./npm-store";
 import * as pm2 from "./pm2";
 import { resolveRuntime } from "./runtime";
@@ -274,7 +274,13 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
   const current = store.get(id);
   if (current && sameDeployment(current, spec, commit)) {
     const procs = await pm2.list();
-    if (procs.get(current.release) === "online") return statusOf(current, procs);
+    if (procs.get(current.release) === "online") {
+      if (JSON.stringify(current.aliases ?? []) !== JSON.stringify(spec.aliases ?? [])) {
+        store.set({ ...current, aliases: spec.aliases ?? [] });
+        await syncRoutes();
+      }
+      return statusOf(store.get(id)!, procs);
+    }
   }
 
   let clock = Date.now();
@@ -336,7 +342,7 @@ async function deployLocked(id: string, spec: Deployment, emit: Emit): Promise<D
     phase("start");
 
     store.set({
-      id, repo: spec.repo, ref: spec.ref, commit, host: spec.host, service: spec.service,
+      id, repo: spec.repo, ref: spec.ref, commit, host: spec.host, aliases: spec.aliases ?? [], service: spec.service,
       release, port, lockHash: hash, envHash: envHash(spec.env), startedAt: new Date().toISOString(),
     });
     await pinCommit(spec.repo, id, commit);
@@ -410,10 +416,4 @@ export async function reconcile(): Promise<void> {
       console.error(`reconcile of ${id} failed: ${toApiError(error).message}`),
     );
   }
-
-  const aliases = await fetch(`${backendUrl}/internal/projects/${projectId}/aliases`, {
-    headers: { "x-devver-secret": secret },
-  }).catch(() => undefined);
-  if (aliases?.ok) await setAliases((await aliases.json()) as { host: string; deploymentId: string }[]);
-  else console.error("reconcile: aliases unavailable, keeping local table");
 }
