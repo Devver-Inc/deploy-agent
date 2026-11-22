@@ -5,8 +5,7 @@ export interface RunResult {
   stderr: string;
 }
 
-// User code (install/build/start) never inherits the agent's env: DEVVER_SECRET
-// and the connection strings live there.
+// User code (install/build/start) never inherits the agent's env: DEVVER_SECRET lives there.
 export function userEnv(
   env: Record<string, string> = {},
 ): Record<string, string> {
