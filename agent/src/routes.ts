@@ -4,7 +4,7 @@ import { config } from "./config";
 import * as deployments from "./deploy";
 import { toApiError } from "./errors";
 import { createRepo, firstParentHistory, mergeCommits, nearestDeployed, resolveCommit } from "./git";
-import { listMongoDatabases } from "./mongo";
+import * as databases from "./databases";
 import * as pm2 from "./pm2";
 import { repoState } from "./repo-state";
 import { store } from "./store";
@@ -12,6 +12,8 @@ import { store } from "./store";
 const idParams = t.Object({ id: t.String({ pattern: ID_PATTERN }) });
 const repoParams = t.Object({ name: t.String({ pattern: REPO_PATTERN }) });
 const COMMIT_PATTERN = "^([0-9a-f]{40}|[0-9a-f]{64})$";
+const engineParams = t.Object({ engine: t.Union(databases.ENGINES.map((e) => t.Literal(e))) });
+const urlField = t.String({ minLength: 1, maxLength: 2048 });
 const encoder = new TextEncoder();
 const sse = (event: string, data: unknown) =>
   encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -119,7 +121,34 @@ export const routes = new Elysia()
       body: t.Object({ first: t.String({ pattern: COMMIT_PATTERN }), second: t.String({ pattern: COMMIT_PATTERN }) }),
     },
   )
-  .get("/databases/mongo", () => listMongoDatabases());
+  // The backend sends the connection string with each call: the agent keeps no
+  // database credential, so a password rotation never restarts it.
+  .post("/databases/:engine/list", ({ params, body }) => databases.list(params.engine, body.url), {
+    params: engineParams,
+    body: t.Object({ url: urlField }),
+  })
+  .put(
+    "/databases/postgres/:name",
+    async ({ params, body, set }) => {
+      await databases.createPostgresDatabase(body.url, params.name);
+      set.status = 204;
+    },
+    {
+      params: t.Object({ name: t.String({ pattern: databases.POSTGRES_NAME_PATTERN }) }),
+      body: t.Object({ url: urlField }),
+    },
+  )
+  .post(
+    "/databases/:engine/password",
+    async ({ params, body, set }) => {
+      await databases.setPassword(params.engine, body.url, body.password);
+      set.status = 204;
+    },
+    {
+      params: engineParams,
+      body: t.Object({ url: urlField, password: t.String({ pattern: databases.PASSWORD_PATTERN }) }),
+    },
+  );
 
 export const localRoutes = new Elysia()
   .get("/health", () => ({ status: "ok" }))

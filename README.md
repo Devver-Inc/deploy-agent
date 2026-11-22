@@ -33,7 +33,6 @@ and the agent makes it exist. Ids, hosts and the user env come from the backend.
 | `DEVVER_BACKEND_URL` | No | Internal backend URL; enables the boot reconcile |
 | `DEVVER_WIDGET_URL` | No | Overlay script injected before `</body>` |
 | `DEVVER_GIT_GATEWAY_PUBLIC_KEY` | No | The only key sshd accepts. Unset: no SSH access |
-| `DEVVER_MONGO_CONNECTION_STRING` | No | Used by `GET /databases/mongo` |
 
 User code never sees these: install, build and start get only `PATH`, `HOME`, `LANG`, `TZ`,
 the runtime's cache variables, `PORT`/`HOST` and the deployment's own env.
@@ -50,13 +49,18 @@ Types: [agent/src/contract.ts](agent/src/contract.ts). Every error is `{ code, m
 | `POST` | `/deployments/:id/{restart,stop,start}` | 204 |
 | `GET` | `/deployments/:id/logs?tail=200` | `text/plain` |
 | `POST` / `DELETE` | `/repos/:name` | 204 (idempotent) |
-| `GET` | `/databases/mongo` | databases of the project's Mongo |
+| `POST` | `/databases/:engine/list` | `{ name, sizeOnDisk?, keys? }[]`; engine `mongo`, `postgres` or `valkey` |
+| `PUT` | `/databases/postgres/:name` | 204, creates the database (idempotent) |
+| `POST` | `/databases/:engine/password` | 204, sets the password of the connection string's user |
 | `GET` | `/health` | no auth |
 
 ```ts
 PUT body = { repo, ref, host, service: { root?, install?, build?, start? }, env? }
 DeploymentStatus = { id, repo, ref, commit, host, status: "running" | "stopped" | "failed", startedAt }
 ```
+
+The `/databases` routes take the connection string in the body (`{ url }`, plus `password`):
+the agent holds no database credential, so rotating one never restarts it.
 
 The same `id` with the same commit, host and service is a no-op, so the backend can resend
 everything safely. Push URL: `ssh://<projectId>@<git host>/app/repos/<repo>.git`.

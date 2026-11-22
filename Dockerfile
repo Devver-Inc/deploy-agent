@@ -1,4 +1,3 @@
-# ─── Prebuilt runtime stages ─────────────────────────────────────
 # Pinned to the same versions previously compiled by asdf. Copying the
 # already-built runtime from each official Alpine (musl) image avoids
 # compiling Python/Ruby/Go from source, which is what made the build slow.
@@ -8,7 +7,6 @@ FROM golang:1.23.2-alpine AS golang-build
 
 FROM oven/bun:1-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0
 
-# ─── System packages ─────────────────────────────────────────────
 # build-base/-dev headers are kept: user projects (pip/gem/npm) may still
 # need to compile native extensions during install, even though we no
 # longer compile the runtimes themselves.
@@ -36,7 +34,6 @@ RUN apk add --no-cache \
     xz-dev \
     tar
 
-# ─── Python (copied from official image, no source compile) ─────
 COPY --from=python-build /usr/local/bin/python3.12 /usr/local/bin/python3.12
 COPY --from=python-build /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=python-build /usr/local/lib/libpython3.12* /usr/local/lib/
@@ -46,7 +43,6 @@ RUN ln -sf /usr/local/bin/python3.12 /usr/local/bin/python3 && \
     /usr/local/bin/python3 -m ensurepip --upgrade && \
     /usr/local/bin/python3 -m pip install --no-cache-dir --upgrade pip poetry==1.8.5
 
-# ─── Ruby (copied from official image, no source compile) ───────
 COPY --from=ruby-build /usr/local/bin/ruby /usr/local/bin/ruby
 COPY --from=ruby-build /usr/local/bin/gem /usr/local/bin/gem
 COPY --from=ruby-build /usr/local/bin/erb /usr/local/bin/erb
@@ -58,11 +54,9 @@ COPY --from=ruby-build /usr/local/lib/libruby* /usr/local/lib/
 COPY --from=ruby-build /usr/local/include/ruby-3.3.0 /usr/local/include/ruby-3.3.0
 RUN gem install bundler -v 2.5.23 --no-document
 
-# ─── Go (copied from official image, no source compile) ─────────
 COPY --from=golang-build /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# ─── Global JS tooling ───────────────────────────────────────────
 RUN npm install -g pm2@7.0.3 pnpm@10.11.0
 
 RUN node --version && \
@@ -73,7 +67,6 @@ RUN node --version && \
     bundle --version && \
     go version
 
-# ─── Folder structure ───────────────────────────────────────────
 RUN mkdir -p /app/repos \
     /app/deployments \
     /app/data \
@@ -86,7 +79,6 @@ RUN mkdir -p /app/repos \
     /app/caches/go/build \
     /app/caches/go/pkg/mod
 
-# ─── Build deploy-agent binary ──────────────────────────────────
 WORKDIR /app/agent
 
 COPY agent/package.json ./package.json
@@ -97,7 +89,6 @@ COPY agent/src ./src
 RUN bun install --frozen-lockfile
 RUN bun run build && mv ./deploy-agent /usr/local/bin/deploy-agent
 
-# ─── User setup ─────────────────────────────────────────────────
 # password "*": sshd pubkey login works, password login and `su git` do not.
 RUN adduser -D -s /usr/bin/git-shell -h /home/git git \
     && echo 'git:*' | chpasswd -e \

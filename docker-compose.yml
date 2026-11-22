@@ -16,7 +16,6 @@ services:
       - DEVVER_PREVIEW_DOMAIN
       - NODE_ENV
       - DEVVER_WIDGET_URL
-      - DEVVER_MONGO_CONNECTION_STRING
 
 volumes:
   devver-app:
